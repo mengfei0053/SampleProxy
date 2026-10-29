@@ -10,7 +10,9 @@ import {
   AUTO_ID,
   DIRECT_ID,
   SYSTEM_ID,
+  actionTitle,
   badgeLabel,
+  bypassListError,
   chromeBypassToken,
   cleanHost,
   createDefaultState,
@@ -22,11 +24,15 @@ import {
   normalizeState,
   parsePattern,
   patternMatches,
+  ipInCidr,
   portFromPageUrl,
+  proxyFieldErrors,
   rawIsCurrent,
   resolveTarget,
+  splitBypassText,
   splitHostPort,
   stable,
+  upsertFixedProfile,
   validateAutoSwitch,
 } from "../extension/lib/state.js";
 
@@ -63,7 +69,11 @@ function routeWithPac(state) {
 }
 
 function runPac(script) {
-  const sandbox = {};
+  const sandbox = {
+    isInNetEx(host, cidr) {
+      return ipInCidr(host, cidr);
+    },
+  };
   vm.createContext(sandbox);
   vm.runInContext(`${script}\nthis.FindProxyForURL = FindProxyForURL;`, sandbox, { timeout: 1000 });
   return (url, host) => sandbox.FindProxyForURL(url, host);
@@ -107,6 +117,146 @@ test("normalizes drafts once and then stays put", () => {
   assert.equal(once.autoSwitch.rules[0].pattern, "*.google.com");
   assert.equal(stable(once), stable(normalizeState(once)));
   assert.equal(rawIsCurrent(once), true);
+});
+
+test("popup save inserts and edits a fixed profile and leaves built-ins alone", () => {
+  const state = createDefaultState();
+  const before = structuredClone(state);
+  const created = createFixedProfile(state.profiles);
+  created.name = "  Home ";
+  created.proxy.host = "LOCALHOST.";
+  created.proxy.username = "socks-user";
+  created.proxy.password = "socks-pass";
+  const inserted = upsertFixedProfile(state, created);
+  assert.deepEqual(state, before);
+  assert.equal(inserted.ok, true);
+  assert.equal(rawIsCurrent(inserted.state), true);
+  assert.equal(inserted.state.activeProfileId, DIRECT_ID);
+  const saved = findProfile(inserted.state, created.id);
+  assert.equal(saved.name, "Home");
+  assert.equal(saved.proxy.scheme, "socks5");
+  assert.equal(saved.proxy.host, "localhost");
+  assert.equal(saved.proxy.port, 1080);
+  assert.equal(saved.proxy.username, "socks-user");
+  assert.equal(saved.proxy.password, "socks-pass");
+  assert.deepEqual(saved.bypass, ["<local>", "localhost", "127.0.0.1", "[::1]"]);
+  assert.deepEqual(inserted.state.profiles.map((profile) => profile.builtin), ["direct", "system", null]);
+
+  const edited = upsertFixedProfile(inserted.state, {
+    id: created.id,
+    name: "Home",
+    color: "#000000",
+    bypass: ["evil.example", "*.internal.example"],
+    proxy: { scheme: "http", host: "proxy.example", port: "8080", username: "alice", password: "secret" },
+  });
+  const updated = findProfile(edited.state, created.id);
+  assert.equal(edited.ok, true);
+  assert.equal(updated.proxy.scheme, "http");
+  assert.equal(updated.proxy.host, "proxy.example");
+  assert.equal(updated.proxy.port, 8080);
+  assert.equal(updated.proxy.username, "alice");
+  assert.equal(updated.proxy.password, "secret");
+  assert.equal(updated.color, saved.color);
+  assert.deepEqual(updated.bypass, ["evil.example", "*.internal.example"]);
+  const kept = upsertFixedProfile(edited.state, {
+    id: created.id,
+    name: "Home",
+    proxy: updated.proxy,
+  });
+  assert.deepEqual(findProfile(kept.state, created.id).bypass, ["evil.example", "*.internal.example"]);
+  assert.match(upsertFixedProfile(edited.state, {
+    id: created.id,
+    name: "Home",
+    proxy: updated.proxy,
+    bypass: ["bad host"],
+  }).error, /bypass entry/i);
+  assert.equal(edited.state.activeProfileId, DIRECT_ID);
+
+  const builtin = upsertFixedProfile(edited.state, {
+    id: DIRECT_ID,
+    name: "Nope",
+    proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },
+  });
+  assert.equal(builtin.ok, false);
+  assert.equal(findProfile(builtin.state, DIRECT_ID).builtin, "direct");
+  assert.equal(builtin.state.profiles.some((profile) => profile.name === "Nope"), false);
+  assert.equal(upsertFixedProfile(edited.state, {
+    id: "p_blankname01",
+    name: " ",
+    proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },
+  }).ok, false);
+  assert.match(upsertFixedProfile(edited.state, {
+    id: "p_badhost0001",
+    name: "Bad",
+    proxy: { scheme: "socks5", host: "bad host", port: 1080 },
+  }).error, /host/i);
+  assert.equal(proxyFieldErrors({ scheme: "socks5", host: "127.0.0.1", port: 1080 }).host, "");
+  assert.match(proxyFieldErrors({ scheme: "socks5", host: "", port: "0" }).port, /1 to 65535/);
+
+  let full = edited.state;
+  while (full.profiles.filter((profile) => !profile.builtin).length < 40) {
+    const extra = createFixedProfile(full.profiles);
+    extra.name = `Proxy ${full.profiles.length}`;
+    const added = upsertFixedProfile(full, extra);
+    assert.equal(added.ok, true);
+    full = added.state;
+  }
+  const overflow = createFixedProfile(full.profiles);
+  overflow.name = "Overflow";
+  assert.equal(upsertFixedProfile(full, overflow).ok, false);
+  const keep = full.profiles.find((profile) => !profile.builtin);
+  const renamed = upsertFixedProfile(full, { id: keep.id, name: "Still here", proxy: keep.proxy });
+  assert.equal(renamed.ok, true);
+  assert.equal(findProfile(renamed.state, keep.id).name, "Still here");
+  assert.equal(renamed.state.profiles.filter((profile) => !profile.builtin).length, 40);
+});
+
+test("a profile bypass list skips those hosts and rejects addresses the proxy model does not use", () => {
+  const state = createDefaultState();
+  const profile = createFixedProfile(state.profiles);
+  profile.name = "Office";
+  profile.bypass = splitBypassText(" localhost, *.internal.example\n10.0.0.8 ");
+  const saved = upsertFixedProfile(state, profile);
+  assert.equal(saved.ok, true);
+  saved.state.activeProfileId = profile.id;
+  const plan = buildApplyPlan(saved.state);
+  assert.deepEqual(plan.config.rules.bypassList, ["localhost", "*.internal.example", "10.0.0.8"]);
+  assert.equal(resolveTarget(saved.state, "www.internal.example", 443).profile.builtin, "direct");
+  assert.equal(resolveTarget(saved.state, "10.0.0.8", 80).bypassed, true);
+  assert.equal(resolveTarget(saved.state, "example.com", 443).bypassed, false);
+  assert.equal(bypassListError(["10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32"]), "");
+  assert.match(bypassListError(["10.0.0.0/33"]), /0 to 32/);
+  assert.match(bypassListError(["2001:db8::/129"]), /0 to 128/);
+  assert.match(bypassListError(["example.com/8"]), /not valid/i);
+  assert.equal(bypassListError(splitBypassText("*.internal.example, <local>")), "");
+});
+
+test("CIDR bypass is applied through the PAC script", () => {
+  const { state, http } = sample();
+  http.bypass = ["10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32", "*.internal.example"];
+  state.activeProfileId = http.id;
+  const plan = buildApplyPlan(state);
+  assert.equal(plan.config.mode, "pac_script");
+  const script = plan.config.pacScript.data;
+  assert.match(script, /isInNetEx/);
+  assert.equal(script.includes("10.0.0.0/8"), true);
+  assert.equal(script.includes("pa$$word"), false);
+  const find = runPac(script);
+  assert.equal(find("http://10.1.2.3/", "10.1.2.3"), "DIRECT");
+  assert.equal(find("http://192.168.4.5/", "192.168.4.5"), "DIRECT");
+  assert.equal(find("http://11.0.0.1/", "11.0.0.1"), "PROXY proxy.example:8080");
+  assert.equal(find("http://[2001:db8::5]/", "2001:db8::5"), "DIRECT");
+  assert.equal(find("http://[2001:db9::5]/", "2001:db9::5"), "PROXY proxy.example:8080");
+  assert.equal(find("http://www.internal.example/", "www.internal.example"), "DIRECT");
+  assert.equal(resolveTarget(state, "10.255.0.1", 80).bypassed, true);
+  assert.equal(ipInCidr("172.16.5.5", "172.16.0.0/12"), true);
+  assert.equal(ipInCidr("172.32.0.1", "172.16.0.0/12"), false);
+  state.activeProfileId = AUTO_ID;
+  state.autoSwitch.defaultProfileId = http.id;
+  state.autoSwitch.rules = [];
+  const route = routeWithPac(state);
+  assert.equal(route("http://10.9.9.9/a"), "DIRECT");
+  assert.equal(route("https://example.org/"), "PROXY proxy.example:8080");
 });
 
 test("new proxies start as local SOCKS5 and get distinct names", () => {
@@ -265,13 +415,29 @@ test("proxy credentials are returned only for the matching HTTP proxy challenge"
   }), null);
 });
 
-test("badge text stays short", () => {
-  assert.equal(badgeLabel(findProfile(createDefaultState(), DIRECT_ID)), "DIR");
-  assert.equal(badgeLabel(findProfile(createDefaultState(), SYSTEM_ID)), "SYS");
-  assert.equal(badgeLabel({ kind: "auto", name: "Auto switch" }), "AUTO");
-  assert.equal(badgeLabel({ name: "Home proxy" }), "HOME");
-  assert.equal(badgeLabel({ name: "家用代理" }), "家用");
-  assert.equal(badgeLabel({ name: "123vpn" }), "123V");
+test("badge text is the switch state, and the tooltip keeps the full name", () => {
+  assert.equal(badgeLabel(findProfile(createDefaultState(), DIRECT_ID)), "OFF");
+  assert.equal(badgeLabel(findProfile(createDefaultState(), SYSTEM_ID)), "ON");
+  assert.equal(badgeLabel({ kind: "auto", name: "Auto switch" }), "ON");
+  assert.equal(badgeLabel(null), "ERR");
+  assert.equal(badgeLabel({ name: "Social proxy", proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 } }), "ON");
+  assert.equal(badgeLabel({ name: "家用代理", proxy: { scheme: "socks4", host: "10.0.0.1", port: 1080 } }), "ON");
+  assert.equal(badgeLabel({ name: "Office", proxy: { scheme: "http", host: "proxy.example", port: 8080 } }), "ON");
+  assert.equal(badgeLabel({ name: "Secure", proxy: { scheme: "https", host: "proxy.example", port: 443 } }), "ON");
+  const title = actionTitle({
+    name: "Social proxy",
+    proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },
+  }, "");
+  assert.match(title, /Social proxy/);
+  assert.match(title, /SOCKS5 · 127\.0\.0\.1:1080/);
+  assert.equal(title.includes("SOCI"), false);
+  const failed = actionTitle({
+    name: "Office",
+    proxy: { scheme: "http", host: "proxy.example", port: 8080 },
+  }, "Chrome rejected the proxy settings.");
+  assert.match(failed, /Office/);
+  assert.match(failed, /HTTP · proxy\.example:8080/);
+  assert.match(failed, /rejected the proxy/);
 });
 
 test("extension manifest is MV3 and only references local files", () => {
@@ -294,6 +460,16 @@ test("extension manifest is MV3 and only references local files", () => {
   assert.match(background, /onAuthRequired/);
   assert.match(background, /isProxy/);
   assert.match(background, /asyncBlocking/);
+  const popupHtml = fs.readFileSync(path.join(root, "extension/popup/popup.html"), "utf8");
+  const popupJs = fs.readFileSync(path.join(root, "extension/popup/popup.js"), "utf8");
+  for (const id of ["add-proxy", "editor", "name", "scheme", "host", "port", "username", "password", "bypass", "save-profile", "cancel-edit"]) {
+    assert.match(popupHtml, new RegExp(`id="${id}"`));
+  }
+  assert.match(popupHtml, /value="socks5"/);
+  assert.match(popupJs, /upsertFixedProfile/);
+  assert.match(popupJs, /createFixedProfile/);
+  assert.match(popupJs, /profile\.builtin \? profileButton/);
+  assert.match(popupJs, /chrome\.storage\.local\.set/);
   for (const relative of ["popup/popup.html", "popup/popup.js", "options/options.html", "options/options.js", "background.js", "ui.css"]) {
     const text = fs.readFileSync(path.join(root, "extension", relative), "utf8");
     assert.doesNotMatch(text, /https?:\/\//);

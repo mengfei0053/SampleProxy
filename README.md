@@ -22,14 +22,13 @@ Chrome copies nothing and does not need a build step. After you change the files
 
 ### Switch Direct and SOCKS5
 
-1. Click the toolbar icon, then **Proxy settings**.
-2. Click **New proxy**. The profile is saved immediately as SOCKS5 on `127.0.0.1` port `1080`.
-3. Change the host or port if your proxy is elsewhere. Text fields save about half a second after you stop typing.
-4. Click **Use this profile**, or return to the popup and click the profile there.
-5. The badge shows the start of the profile name, in that profile's color. **Direct** shows `DIR`.
-6. Click **Direct** in the popup when you want a connection with no proxy.
+1. Click the toolbar icon, then **Add proxy**. The form starts as SOCKS5 on `127.0.0.1` port `1080`. Set the name, type (SOCKS5, SOCKS4, HTTP, or HTTPS), host, and port. HTTP and HTTPS can also store a username and password. **Bypass** lists hosts that connect directly, one pattern per line or separated by commas (`localhost`, `*.internal.example`, `10.0.0.0/8`, `2001:db8::/32`). Click **Save**.
+2. The profile appears in the popup list. Click it to use it. **Edit** on that row changes the same fields later, including the bypass list.
+3. **Proxy settings** still opens the full page. **New proxy** there creates the same kind of profile and edits the same bypass list. Badge colors and auto-switch rules are edited there. Text fields on that page save about half a second after you stop typing.
+4. The badge shows `ON` while a proxy, the system proxy, or auto switch is in use, in that profile's color. **Direct** shows `OFF`. Hover the icon for the full name and server.
+5. Click **Direct** in the popup when you want a connection with no proxy.
 
-Built-in Direct and System profiles cannot be edited or deleted.
+Built-in Direct and System profiles cannot be edited or deleted. Auto switch is not a proxy profile, so the popup does not edit it here.
 
 ### Auto switch
 
@@ -50,11 +49,11 @@ The System profile cannot be the default or a rule target. A PAC script has no r
 
 | Badge | Meaning |
 | --- | --- |
-| `DIR` | Direct connection |
-| `SYS` | Operating system proxy |
-| `AUTO` | Auto switch |
+| `OFF` | Direct connection, no proxy |
+| `ON` | A fixed proxy, the system proxy, or auto switch is in use |
 | `ERR` | The latest settings were not applied. The previous working proxy stays in place. |
-| other | The first letters of the active fixed profile |
+
+Hover the toolbar icon for the full profile name and `scheme · host:port`. The popup list is where the long name is shown.
 
 ### Permissions
 
@@ -104,14 +103,13 @@ SampleProxy is not affiliated with SwitchyOmega. Proxy servers can see the traff
 
 ### 在直连和 SOCKS5 之间切换
 
-1. 点击工具栏图标，再点**Proxy settings**（代理设置）。
-2. 点击 **New proxy**（新建代理）。配置会立刻保存，默认是 `127.0.0.1` 端口 `1080` 的 SOCKS5。
-3. 如果代理不在本机，改主机和端口。文本大约在停止输入半秒后写入。
-4. 点击 **Use this profile**（使用此配置），或回到弹窗里点该配置。
-5. 角标显示配置名称的开头，背景是该配置的颜色。直连显示 `DIR`。
-6. 要取消代理时，在弹窗里点 **Direct**。
+1. 点击工具栏图标，再点 **Add proxy**（添加代理）。表单默认是 `127.0.0.1` 端口 `1080` 的 SOCKS5。填写名称、类型（SOCKS5、SOCKS4、HTTP 或 HTTPS）、主机和端口。HTTP 和 HTTPS 还可以填写用户名和密码。**Bypass**（绕过）填写应直连的主机，每行一个，或用逗号分隔（`localhost`、`*.internal.example`、`10.0.0.0/8`、`2001:db8::/32`）。点击 **Save**（保存）。
+2. 配置会出现在弹窗列表里。点击它即可使用。该行的 **Edit**（编辑）以后可以改同样的字段，包括绕过列表。
+3. **Proxy settings**（代理设置）仍然打开完整设置页。那里的 **New proxy**（新建代理）会建立同一种配置，并编辑同一份绕过列表。角标颜色和自动切换规则在设置页修改。设置页的文本大约在停止输入半秒后写入。
+4. 使用固定代理、系统代理或自动切换时，角标显示 `ON`，背景是该配置的颜色。直连显示 `OFF`。鼠标悬停在图标上可以看到完整名称和服务器。
+5. 要取消代理时，在弹窗里点 **Direct**。
 
-内置的 Direct（直连）和 System（系统代理）不能编辑或删除。
+内置的 Direct（直连）和 System（系统代理）不能编辑或删除。Auto switch（自动切换）不是代理配置，弹窗里不能把它当成代理来编辑。
 
 ### 自动切换
 
@@ -132,11 +130,11 @@ SampleProxy is not affiliated with SwitchyOmega. Proxy servers can see the traff
 
 | 角标 | 含义 |
 | --- | --- |
-| `DIR` | 直连 |
-| `SYS` | 操作系统代理 |
-| `AUTO` | 自动切换 |
+| `OFF` | 直连，不使用代理 |
+| `ON` | 正在使用固定代理、系统代理或自动切换 |
 | `ERR` | 最新设置没有生效。之前可用的代理保持不变。 |
-| 其他 | 当前固定配置名称的前几个字符 |
+
+鼠标悬停在工具栏图标上可以看到完整配置名和 `scheme · host:port`。长名称显示在弹窗列表里。
 
 ### 权限
 

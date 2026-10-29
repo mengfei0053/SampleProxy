@@ -1,7 +1,8 @@
-import { buildPac } from "./pac.js";
+import { buildFixedPac, buildPac } from "./pac.js";
 import {
   AUTO_ID,
   activeDescriptor,
+  bypassHasCidr,
   chromeBypassToken,
   cleanHost,
   cleanPort,
@@ -31,6 +32,17 @@ export function buildApplyPlan(state) {
   if (profile.builtin === "system") return { ok: true, error: null, config: { mode: "system" }, badge: profile };
   const error = validateFixedProfile(profile);
   if (error) return { ok: false, error, config: null, badge: profile };
+  if (bypassHasCidr(profile)) {
+    return {
+      ok: true,
+      error: null,
+      config: {
+        mode: "pac_script",
+        pacScript: { data: buildFixedPac(profile), mandatory: false },
+      },
+      badge: profile,
+    };
+  }
   return { ok: true, error: null, config: fixedServerConfig(profile), badge: profile };
 }
 

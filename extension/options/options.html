@@ -89,7 +89,7 @@
             <span>Bypass</span>
             <textarea id="bypass" rows="5" spellcheck="false" placeholder="<local>&#10;localhost&#10;127.0.0.1&#10;[::1]"></textarea>
             <small id="bypass-error" class="field-error"></small>
-            <small class="hint">One host per line. These hosts skip this proxy, including when a rule selects it. <code>&lt;local&gt;</code> matches single-label names such as localhost.</small>
+            <small class="hint">One host per line. These hosts skip this proxy, including when a rule selects it. <code>&lt;local&gt;</code> matches single-label names such as localhost. CIDR ranges such as <code>10.0.0.0/8</code> and <code>2001:db8::/32</code> are matched in the generated PAC script.</small>
           </label>
           </div>
 

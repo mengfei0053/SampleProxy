@@ -3,6 +3,7 @@ import {
   cleanPort,
   findProfile,
   isIpv6,
+  parseCidr,
   parsePattern,
   validateAutoSwitch,
 } from "./state.js";
@@ -80,7 +81,12 @@ function proxyRuleMatches(pattern, wantPort, host, port) {
 function applyProxyBypass(result, bypass, host, port) {
   var i;
   for (i = 0; i < bypass.length; i++) {
-    if (proxyRuleMatches(bypass[i].pattern, bypass[i].port, host, port)) return "DIRECT";
+    var entry = bypass[i];
+    if (entry.cidr) {
+      if (isInNetEx(host, entry.cidr)) return "DIRECT";
+      continue;
+    }
+    if (proxyRuleMatches(entry.pattern, entry.port, host, port)) return "DIRECT";
   }
   return result;
 }
@@ -146,10 +152,26 @@ export function buildPac(state) {
   return `var PROXY_DATA = ${JSON.stringify(data)};\n${PAC_RUNTIME}`;
 }
 
+export function buildFixedPac(profile) {
+  const data = {
+    rules: [],
+    fallback: {
+      result: pacResult(profile),
+      bypass: bypassData(profile),
+    },
+  };
+  return `var PROXY_DATA = ${JSON.stringify(data)};\n${PAC_RUNTIME}`;
+}
+
 function bypassData(profile) {
   if (!profile || profile.builtin) return [];
   const entries = [];
   for (const line of profile.bypass || []) {
+    const cidr = parseCidr(line);
+    if (cidr.ok) {
+      entries.push({ cidr: `${cidr.address}/${cidr.prefix}` });
+      continue;
+    }
     const parsed = parsePattern(line);
     if (!parsed.ok) continue;
     entries.push({ pattern: parsed.pattern, port: parsed.port || 0 });

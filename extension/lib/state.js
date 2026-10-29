@@ -1,4 +1,5 @@
 export const SCHEMA_VERSION = 1;
+export const MAX_USER_PROFILES = 40;
 export const DIRECT_ID = "direct";
 export const SYSTEM_ID = "system";
 export const AUTO_ID = "auto";
@@ -87,7 +88,7 @@ export function normalizeState(raw) {
   const users = [];
   const source = Array.isArray(input.profiles) ? input.profiles : [];
   for (const entry of source) {
-    if (users.length >= 40) break;
+    if (users.length >= MAX_USER_PROFILES) break;
     const profile = normalizeUserProfile(entry, seen);
     if (!profile) continue;
     seen.add(profile.id);
@@ -160,14 +161,17 @@ export function describeProfile(profile) {
 
 export function badgeLabel(profile) {
   if (!profile) return "ERR";
-  if (profile.kind === "auto") return "AUTO";
-  if (profile.builtin === "direct") return "DIR";
-  if (profile.builtin === "system") return "SYS";
-  const name = String(profile.name || "").trim();
-  if (!name) return "PRX";
-  const ascii = name.replace(/[^A-Za-z0-9]/g, "");
-  if (ascii) return ascii.slice(0, 4).toUpperCase();
-  return Array.from(name).slice(0, 2).join("");
+  if (profile.builtin === "direct") return "OFF";
+  return "ON";
+}
+
+export function actionTitle(profile, error) {
+  const name = String(profile?.name || "").trim() || "SampleProxy";
+  const detail = describeProfile(profile);
+  const lines = [`SampleProxy: ${name}`];
+  if (detail) lines.push(detail);
+  if (error) lines.push(String(error));
+  return lines.join("\n");
 }
 
 export function cleanHost(value) {
@@ -321,7 +325,47 @@ export function portFromPageUrl(url) {
 export function profileBypasses(profile, host, port) {
   if (!profile || profile.builtin === "direct" || profile.builtin === "system") return false;
   const lines = Array.isArray(profile.bypass) ? profile.bypass : [];
-  return lines.some((line) => patternMatches(parsePattern(line), host, port));
+  const normalized = normalizeHost(host);
+  const portNum = Number(port) || 0;
+  return lines.some((line) => bypassLineMatches(line, normalized, portNum));
+}
+
+export function parseCidr(input) {
+  const text = String(input ?? "").trim().toLowerCase();
+  const slash = text.indexOf("/");
+  if (slash <= 0 || slash !== text.lastIndexOf("/")) return { ok: false, cidr: false, error: "" };
+  const address = text.slice(0, slash);
+  const prefixText = text.slice(slash + 1);
+  if (!/^\d{1,3}$/.test(prefixText)) {
+    return { ok: false, cidr: true, error: "CIDR prefix must be a number." };
+  }
+  const prefix = Number(prefixText);
+  if (isIpv4(address)) {
+    if (prefix > 32) return { ok: false, cidr: true, error: "IPv4 prefix must be from 0 to 32." };
+    return { ok: true, cidr: true, family: "ipv4", address, prefix, error: "" };
+  }
+  const v6 = address.startsWith("[") && address.endsWith("]") ? address.slice(1, -1) : address;
+  if (isIpv6(v6)) {
+    if (prefix > 128) return { ok: false, cidr: true, error: "IPv6 prefix must be from 0 to 128." };
+    return { ok: true, cidr: true, family: "ipv6", address: v6, prefix, error: "" };
+  }
+  return { ok: false, cidr: false, error: "" };
+}
+
+export function ipInCidr(host, cidr) {
+  const parsed = typeof cidr === "string" ? parseCidr(cidr) : cidr;
+  if (!parsed?.ok) return false;
+  const ip = normalizeHost(host);
+  if (parsed.family === "ipv4") {
+    if (!isIpv4(ip)) return false;
+    return ipv4InCidr(ip, parsed.address, parsed.prefix);
+  }
+  if (!isIpv6(ip)) return false;
+  return ipv6InCidr(ip, parsed.address, parsed.prefix);
+}
+
+export function bypassHasCidr(profile) {
+  return (profile?.bypass || []).some((line) => parseCidr(line).ok);
 }
 
 export function resolveTarget(state, host, port) {
@@ -351,19 +395,93 @@ export function resolveTarget(state, host, port) {
   return { profile: chosen, bypassed: false };
 }
 
+export function proxyFieldErrors(proxy) {
+  return {
+    scheme: SCHEMES.includes(proxy?.scheme) ? "" : "Choose HTTP, HTTPS, SOCKS4, or SOCKS5.",
+    host: hostError(proxy?.host),
+    port: cleanPort(proxy?.port) == null ? "Port must be a number from 1 to 65535." : "",
+  };
+}
+
+export function upsertFixedProfile(state, profile) {
+  const next = normalizeState(state);
+  const reject = (error) => ({ ok: false, error, state: next });
+  if (!profile || typeof profile !== "object" || profile.builtin) {
+    return reject("Built-in profiles cannot be edited.");
+  }
+  if (profile.id === DIRECT_ID || profile.id === SYSTEM_ID || profile.id === AUTO_ID) {
+    return reject("Built-in profiles cannot be edited.");
+  }
+  const name = String(profile.name ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  if (!name) return reject("Give the profile a name.");
+  const fields = proxyFieldErrors(profile.proxy);
+  const fieldError = fields.scheme || fields.host || fields.port;
+  if (fieldError) return reject(fieldError);
+  if (Array.isArray(profile.bypass)) {
+    const bypassProblem = bypassListError(profile.bypass);
+    if (bypassProblem) return reject(bypassProblem);
+  }
+  const index = next.profiles.findIndex((item) => item.id === profile.id);
+  if (index === -1) {
+    const count = next.profiles.filter((item) => !item.builtin).length;
+    if (count >= MAX_USER_PROFILES) {
+      return reject("You can save 40 proxy profiles. Delete one in Proxy settings before adding another.");
+    }
+    next.profiles.push({ ...profile, name, builtin: null });
+  } else if (next.profiles[index].builtin) {
+    return reject("Built-in profiles cannot be edited.");
+  } else {
+    const current = next.profiles[index];
+    const replacement = {
+      ...current,
+      name,
+      proxy: {
+        scheme: profile.proxy.scheme,
+        host: profile.proxy.host,
+        port: profile.proxy.port,
+        username: profile.proxy.username,
+        password: profile.proxy.password,
+      },
+    };
+    if (Array.isArray(profile.bypass)) replacement.bypass = profile.bypass;
+    next.profiles[index] = replacement;
+  }
+  return { ok: true, error: "", state: normalizeState(next) };
+}
+
+export function splitBypassText(value) {
+  return String(value ?? "")
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+export function bypassListError(lines) {
+  for (const line of lines || []) {
+    const cidr = parseCidr(line);
+    if (cidr.cidr) {
+      if (!cidr.ok) return `Bypass entry "${clip(line)}" is not valid. ${cidr.error}`;
+      continue;
+    }
+    const parsed = parsePattern(line);
+    if (!parsed.ok) {
+      const detail = String(line).includes("/")
+        ? "Use a host pattern or CIDR such as *.example.com, 10.0.0.0/8, or 2001:db8::/32."
+        : parsed.error;
+      return `Bypass entry "${clip(line)}" is not valid. ${detail}`;
+    }
+  }
+  return "";
+}
+
 export function validateFixedProfile(profile) {
   if (!profile || profile.builtin) return "Choose a fixed proxy profile.";
   if (!SCHEMES.includes(profile.proxy?.scheme)) return "Choose HTTP, HTTPS, SOCKS4, or SOCKS5.";
   const problem = hostError(profile.proxy?.host);
   if (problem) return problem;
   if (cleanPort(profile.proxy?.port) == null) return "Port must be a number from 1 to 65535.";
-  for (const line of profile.bypass || []) {
-    const parsed = parsePattern(line);
-    if (!parsed.ok) {
-      return `Bypass entry "${clip(line)}" is not valid. Use localhost, *.example.com, or <local>.`;
-    }
-  }
-  return "";
+  return bypassListError(profile.bypass);
 }
 
 export function validateAutoSwitch(state) {
@@ -521,6 +639,55 @@ function isHostPattern(pattern) {
   if (!body || body.includes("*")) return false;
   if (isIpv4(body) || isIpv6(body)) return !wild;
   return isDomain(body);
+}
+
+function bypassLineMatches(line, host, port) {
+  const cidr = parseCidr(line);
+  if (cidr.ok) return ipInCidr(host, cidr);
+  return patternMatches(parsePattern(line), host, port);
+}
+
+function ipv4ToInt(ip) {
+  const parts = String(ip).split(".").map(Number);
+  return ((parts[0] * 16777216) + (parts[1] * 65536) + (parts[2] * 256) + parts[3]) >>> 0;
+}
+
+function ipv4InCidr(ip, base, prefix) {
+  if (prefix <= 0) return true;
+  const ipInt = ipv4ToInt(ip);
+  const baseInt = ipv4ToInt(base);
+  if (prefix >= 32) return ipInt === baseInt;
+  const mask = (0xffffffff << (32 - prefix)) >>> 0;
+  return (ipInt & mask) === (baseInt & mask);
+}
+
+function ipv6Groups(ip) {
+  const halves = String(ip).split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 ? (halves[1] ? halves[1].split(":") : []) : [];
+  if (halves.length === 1 && head.length !== 8) return null;
+  const missing = 8 - head.length - tail.length;
+  if (missing < 0) return null;
+  const groups = halves.length === 2 ? [...head, ...Array(missing).fill("0"), ...tail] : head;
+  if (groups.length !== 8) return null;
+  if (groups.some((group) => !/^[0-9a-f]{1,4}$/i.test(group) && group !== "0")) return null;
+  return groups.map((group) => Number.parseInt(group || "0", 16));
+}
+
+function ipv6InCidr(ip, base, prefix) {
+  const left = ipv6Groups(ip);
+  const right = ipv6Groups(base);
+  if (!left || !right) return false;
+  if (prefix <= 0) return true;
+  let bits = Math.min(prefix, 128);
+  for (let index = 0; index < 8 && bits > 0; index += 1) {
+    const take = Math.min(16, bits);
+    const mask = (0xffff << (16 - take)) & 0xffff;
+    if ((left[index] & mask) !== (right[index] & mask)) return false;
+    bits -= take;
+  }
+  return true;
 }
 
 function hostPatternMatches(pattern, host) {
