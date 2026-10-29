@@ -67,9 +67,9 @@
     <p id="auth-note" class="editor-note"></p>
     <label>
       <span>Bypass</span>
-      <textarea id="bypass" rows="3" spellcheck="false" placeholder="localhost, 127.0.0.1, *.internal.example"></textarea>
+      <textarea id="bypass" rows="3" spellcheck="false" placeholder="localhost, *.internal.example, 10.0.0.0/8"></textarea>
       <small id="bypass-error" class="field-error"></small>
-      <small class="editor-note">These hosts connect directly. One pattern per line, or separate them with commas.</small>
+      <small class="editor-note">These hosts connect directly. One pattern or CIDR per line, or separate them with commas.</small>
     </label>
     <p id="form-error" class="field-error" role="alert"></p>
     <div class="editor-actions">

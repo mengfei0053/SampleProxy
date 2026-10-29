@@ -217,6 +217,24 @@ try {
   const title = await evaluate(worker.client, `chrome.action.getTitle({})`);
   expect(title.includes("Popup proxy"), `tooltip missed the profile name: ${title}`);
   expect(title.includes("proxy.popup.test:8889"), `tooltip missed the server: ${title}`);
+
+  await evaluate(popup.client, `[...document.querySelectorAll(".profile-line")].find((row) => row.querySelector(".name")?.textContent === "Popup proxy").querySelector(".edit-profile").click()`);
+  await waitFor(popup.client, `document.querySelector("#editor-title")?.textContent === "Edit proxy" ? "ready" : ""`);
+  await evaluate(popup.client, `(() => {
+    const bypass = document.querySelector("#bypass");
+    bypass.value = bypass.value.replace(/\\s*$/, "") + "\\n10.0.0.0/8\\n2001:db8::/32";
+    document.querySelector("#save-profile").click();
+  })()`, false);
+  await waitFor(popup.client, `document.querySelector("#editor").hidden ? "ready" : ""`);
+  await sleep(700);
+  const cidrProxy = await proxyValue(worker.client);
+  expect(cidrProxy.mode === "pac_script", `CIDR proxy mode was ${cidrProxy.mode}`);
+  const cidrPac = cidrProxy.pacScript?.data || "";
+  expect(cidrPac.includes("isInNetEx"), "PAC did not match CIDR with isInNetEx");
+  expect(cidrPac.includes("10.0.0.0/8"), "PAC omitted the IPv4 CIDR");
+  expect(cidrPac.includes("2001:db8::/32"), "PAC omitted the IPv6 CIDR");
+  expect(cidrPac.includes("example.org"), "PAC omitted the hostname bypass");
+  expect(!cidrPac.includes("popup-secret"), "CIDR PAC included a password");
   const lines = await evaluate(popup.client, `[...document.querySelectorAll(".profile-line .name")].map((node) => node.textContent)`);
   expect(!lines.includes("Direct") && !lines.includes("System") && !lines.includes("Auto switch"),
     `built-in rows became editable: ${lines.join(",")}`);
@@ -224,7 +242,7 @@ try {
   await evaluate(options.client, `location.reload()`);
   await waitFor(options.client, `[...document.querySelectorAll(".row-name")].some((node) => node.textContent === "Popup proxy") ? "ready" : ""`);
   const optionsBypass = await evaluate(options.client, `document.querySelector("#bypass").value`);
-  expect(optionsBypass.includes("example.org") && optionsBypass.includes("*.bypass.test"), `options bypass was ${optionsBypass}`);
+  expect(optionsBypass.includes("example.org") && optionsBypass.includes("*.bypass.test") && optionsBypass.includes("10.0.0.0/8"), `options bypass was ${optionsBypass}`);
 
   await sleep(300);
   expect(workerErrors.length === 0, `service worker errors: ${JSON.stringify(workerErrors)}`);

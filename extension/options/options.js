@@ -5,6 +5,7 @@ import {
   PALETTE,
   SCHEMA_VERSION,
   activeDescriptor,
+  bypassListError,
   cleanPort,
   createFixedProfile,
   describeProfile,
@@ -460,8 +461,7 @@ function refreshFieldErrors() {
   setFieldError("name", profile && !els.name.value.trim() ? "Give the profile a name." : "");
   setFieldError("host", profile ? hostError(els.host.value) : "");
   setFieldError("port", profile && cleanPort(els.port.value.trim()) == null ? "Port must be a number from 1 to 65535." : "");
-  const bypassProblem = (profile?.bypass || []).map((line) => parsePattern(line)).find((parsed) => !parsed.ok);
-  setFieldError("bypass", bypassProblem ? bypassProblem.error : "");
+  setFieldError("bypass", profile ? bypassListError(profile.bypass) : "");
 }
 
 async function refreshBanner() {

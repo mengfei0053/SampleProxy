@@ -24,6 +24,7 @@ import {
   normalizeState,
   parsePattern,
   patternMatches,
+  ipInCidr,
   portFromPageUrl,
   proxyFieldErrors,
   rawIsCurrent,
@@ -68,7 +69,11 @@ function routeWithPac(state) {
 }
 
 function runPac(script) {
-  const sandbox = {};
+  const sandbox = {
+    isInNetEx(host, cidr) {
+      return ipInCidr(host, cidr);
+    },
+  };
   vm.createContext(sandbox);
   vm.runInContext(`${script}\nthis.FindProxyForURL = FindProxyForURL;`, sandbox, { timeout: 1000 });
   return (url, host) => sandbox.FindProxyForURL(url, host);
@@ -219,8 +224,39 @@ test("a profile bypass list skips those hosts and rejects addresses the proxy mo
   assert.equal(resolveTarget(saved.state, "www.internal.example", 443).profile.builtin, "direct");
   assert.equal(resolveTarget(saved.state, "10.0.0.8", 80).bypassed, true);
   assert.equal(resolveTarget(saved.state, "example.com", 443).bypassed, false);
-  assert.match(bypassListError(["10.0.0.0/8"]), /not valid/i);
+  assert.equal(bypassListError(["10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32"]), "");
+  assert.match(bypassListError(["10.0.0.0/33"]), /0 to 32/);
+  assert.match(bypassListError(["2001:db8::/129"]), /0 to 128/);
+  assert.match(bypassListError(["example.com/8"]), /not valid/i);
   assert.equal(bypassListError(splitBypassText("*.internal.example, <local>")), "");
+});
+
+test("CIDR bypass is applied through the PAC script", () => {
+  const { state, http } = sample();
+  http.bypass = ["10.0.0.0/8", "192.168.0.0/16", "2001:db8::/32", "*.internal.example"];
+  state.activeProfileId = http.id;
+  const plan = buildApplyPlan(state);
+  assert.equal(plan.config.mode, "pac_script");
+  const script = plan.config.pacScript.data;
+  assert.match(script, /isInNetEx/);
+  assert.equal(script.includes("10.0.0.0/8"), true);
+  assert.equal(script.includes("pa$$word"), false);
+  const find = runPac(script);
+  assert.equal(find("http://10.1.2.3/", "10.1.2.3"), "DIRECT");
+  assert.equal(find("http://192.168.4.5/", "192.168.4.5"), "DIRECT");
+  assert.equal(find("http://11.0.0.1/", "11.0.0.1"), "PROXY proxy.example:8080");
+  assert.equal(find("http://[2001:db8::5]/", "2001:db8::5"), "DIRECT");
+  assert.equal(find("http://[2001:db9::5]/", "2001:db9::5"), "PROXY proxy.example:8080");
+  assert.equal(find("http://www.internal.example/", "www.internal.example"), "DIRECT");
+  assert.equal(resolveTarget(state, "10.255.0.1", 80).bypassed, true);
+  assert.equal(ipInCidr("172.16.5.5", "172.16.0.0/12"), true);
+  assert.equal(ipInCidr("172.32.0.1", "172.16.0.0/12"), false);
+  state.activeProfileId = AUTO_ID;
+  state.autoSwitch.defaultProfileId = http.id;
+  state.autoSwitch.rules = [];
+  const route = routeWithPac(state);
+  assert.equal(route("http://10.9.9.9/a"), "DIRECT");
+  assert.equal(route("https://example.org/"), "PROXY proxy.example:8080");
 });
 
 test("new proxies start as local SOCKS5 and get distinct names", () => {

@@ -22,7 +22,7 @@ Chrome copies nothing and does not need a build step. After you change the files
 
 ### Switch Direct and SOCKS5
 
-1. Click the toolbar icon, then **Add proxy**. The form starts as SOCKS5 on `127.0.0.1` port `1080`. Set the name, type (SOCKS5, SOCKS4, HTTP, or HTTPS), host, and port. HTTP and HTTPS can also store a username and password. **Bypass** lists hosts that connect directly, one pattern per line or separated by commas (`localhost`, `127.0.0.1`, `*.internal.example`). Click **Save**.
+1. Click the toolbar icon, then **Add proxy**. The form starts as SOCKS5 on `127.0.0.1` port `1080`. Set the name, type (SOCKS5, SOCKS4, HTTP, or HTTPS), host, and port. HTTP and HTTPS can also store a username and password. **Bypass** lists hosts that connect directly, one pattern per line or separated by commas (`localhost`, `*.internal.example`, `10.0.0.0/8`, `2001:db8::/32`). Click **Save**.
 2. The profile appears in the popup list. Click it to use it. **Edit** on that row changes the same fields later, including the bypass list.
 3. **Proxy settings** still opens the full page. **New proxy** there creates the same kind of profile and edits the same bypass list. Badge colors and auto-switch rules are edited there. Text fields on that page save about half a second after you stop typing.
 4. The badge shows `ON` while a proxy, the system proxy, or auto switch is in use, in that profile's color. **Direct** shows `OFF`. Hover the icon for the full name and server.
@@ -103,7 +103,7 @@ SampleProxy is not affiliated with SwitchyOmega. Proxy servers can see the traff
 
 ### 在直连和 SOCKS5 之间切换
 
-1. 点击工具栏图标，再点 **Add proxy**（添加代理）。表单默认是 `127.0.0.1` 端口 `1080` 的 SOCKS5。填写名称、类型（SOCKS5、SOCKS4、HTTP 或 HTTPS）、主机和端口。HTTP 和 HTTPS 还可以填写用户名和密码。**Bypass**（绕过）填写应直连的主机，每行一个，或用逗号分隔（`localhost`、`127.0.0.1`、`*.internal.example`）。点击 **Save**（保存）。
+1. 点击工具栏图标，再点 **Add proxy**（添加代理）。表单默认是 `127.0.0.1` 端口 `1080` 的 SOCKS5。填写名称、类型（SOCKS5、SOCKS4、HTTP 或 HTTPS）、主机和端口。HTTP 和 HTTPS 还可以填写用户名和密码。**Bypass**（绕过）填写应直连的主机，每行一个，或用逗号分隔（`localhost`、`*.internal.example`、`10.0.0.0/8`、`2001:db8::/32`）。点击 **Save**（保存）。
 2. 配置会出现在弹窗列表里。点击它即可使用。该行的 **Edit**（编辑）以后可以改同样的字段，包括绕过列表。
 3. **Proxy settings**（代理设置）仍然打开完整设置页。那里的 **New proxy**（新建代理）会建立同一种配置，并编辑同一份绕过列表。角标颜色和自动切换规则在设置页修改。设置页的文本大约在停止输入半秒后写入。
 4. 使用固定代理、系统代理或自动切换时，角标显示 `ON`，背景是该配置的颜色。直连显示 `OFF`。鼠标悬停在图标上可以看到完整名称和服务器。
