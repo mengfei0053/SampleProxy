@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light;
+  --ink: #241f1a;
+  --muted: #5e564c;
+  --paper: #fffaf3;
+  --page: #ebe4d8;
+  --line: #e3d9cc;
+  --line-strong: #d3c7b6;
+  --navy: #243044;
+  --ivory: #f7f3ea;
+  --terracotta: #9f3d22;
+  --danger: #8d2f2f;
+  --banner: #f8e6df;
+  --focus: #9f3d22;
+  font-family: "Segoe UI", "Helvetica Neue", "Noto Sans", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

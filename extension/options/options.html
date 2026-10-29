@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SampleProxy settings</title>
+  <link rel="icon" href="../icons/icon32.png">
+  <link rel="stylesheet" href="../ui.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <img src="../icons/icon48.png" width="40" height="40" alt="">
+      <div class="top-copy">
+        <h1>SampleProxy</h1>
+        <p>Choose a connection for Chrome, or let rules pick one per site.</p>
+      </div>
+      <p class="in-use">In use <span id="in-use-swatch" class="swatch"></span> <strong id="in-use-name">Direct</strong></p>
+    </header>
+
+    <p id="apply-error" class="banner" hidden></p>
+    <p id="save-state" class="save-state" role="status"></p>
+
+    <div class="layout">
+      <section class="card" aria-label="Profiles">
+        <div class="card-head">
+          <h2>Profiles</h2>
+          <button id="add-profile" class="primary" type="button">New proxy</button>
+        </div>
+        <div id="profile-list" class="profile-list"></div>
+      </section>
+
+      <section class="card">
+        <h2 id="editor-title">Profile</h2>
+        <div id="builtin-note" class="note" hidden></div>
+        <form id="editor" autocomplete="off">
+          <div id="fixed-fields">
+          <label class="field">
+            <span>Name</span>
+            <input id="name" type="text" maxlength="60" spellcheck="false">
+            <small id="name-error" class="field-error"></small>
+          </label>
+
+          <fieldset class="field">
+            <legend>Badge color</legend>
+            <div id="colors" class="colors"></div>
+          </fieldset>
+
+          <label class="field">
+            <span>Type</span>
+            <select id="scheme">
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+              <option value="socks4">SOCKS4</option>
+              <option value="socks5">SOCKS5</option>
+            </select>
+          </label>
+
+          <div class="host-row">
+            <label class="field">
+              <span>Host</span>
+              <input id="host" type="text" spellcheck="false" autocapitalize="off" placeholder="127.0.0.1">
+              <small id="host-error" class="field-error"></small>
+            </label>
+            <label class="field">
+              <span>Port</span>
+              <input id="port" type="text" inputmode="numeric" spellcheck="false" placeholder="1080">
+              <small id="port-error" class="field-error"></small>
+            </label>
+          </div>
+
+          <div class="host-row">
+            <label class="field">
+              <span>Username</span>
+              <input id="username" type="text" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <span class="password-line">
+                <input id="password" type="password" autocomplete="new-password">
+                <button id="toggle-password" type="button">Show</button>
+              </span>
+            </label>
+          </div>
+          <p id="auth-note" class="hint"></p>
+
+          <label class="field">
+            <span>Bypass</span>
+            <textarea id="bypass" rows="5" spellcheck="false" placeholder="<local>&#10;localhost&#10;127.0.0.1&#10;[::1]"></textarea>
+            <small id="bypass-error" class="field-error"></small>
+            <small class="hint">One host per line. These hosts skip this proxy, including when a rule selects it. <code>&lt;local&gt;</code> matches single-label names such as localhost.</small>
+          </label>
+          </div>
+
+          <div class="actions">
+            <button id="use-profile" class="primary" type="button">Use this profile</button>
+            <button id="delete-profile" class="danger" type="button">Delete</button>
+            <button id="cancel-delete" class="quiet" type="button" hidden>Cancel</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <section id="auto-switch" class="card auto-card">
+      <div class="card-head">
+        <h2>Auto switch</h2>
+        <button id="use-auto" class="primary" type="button">Use auto switch</button>
+      </div>
+      <p class="hint">When Auto switch is on, Chrome uses a PAC script. The first matching rule wins. A profile's bypass list still connects directly. The System profile cannot be chosen per site, because a PAC script has no "use the operating system proxy" result.</p>
+
+      <label class="field narrow">
+        <span>Default for sites with no matching rule</span>
+        <select id="default-profile"></select>
+      </label>
+
+      <div class="rules-head">
+        <h3>Rules</h3>
+        <button id="add-rule" type="button" class="quiet">Add rule</button>
+      </div>
+      <div id="rules"></div>
+      <p class="hint">Patterns: <code>example.com</code> (that host only), <code>*.example.com</code> (that host and subdomains), <code>.example.com</code> (subdomains only). Add <code>:443</code> to match one port.</p>
+    </section>
+
+    <footer class="page-foot">
+      <p>Not affiliated with SwitchyOmega. Proxy usernames and passwords stay in this browser profile and are sent only to an HTTP or HTTPS proxy that asks Chrome to sign in.</p>
+    </footer>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
