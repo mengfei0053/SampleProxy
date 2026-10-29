@@ -159,19 +159,10 @@ export function describeProfile(profile) {
   return `${scheme} · ${host}${port}`;
 }
 
-const BADGE_SCHEME = {
-  http: "HTTP",
-  https: "HTTPS",
-  socks4: "S4",
-  socks5: "SOCK",
-};
-
 export function badgeLabel(profile) {
   if (!profile) return "ERR";
-  if (profile.kind === "auto") return "AUTO";
-  if (profile.builtin === "direct") return "DIR";
-  if (profile.builtin === "system") return "SYS";
-  return BADGE_SCHEME[profile.proxy?.scheme] || "PRX";
+  if (profile.builtin === "direct") return "OFF";
+  return "ON";
 }
 
 export function actionTitle(profile, error) {

@@ -348,16 +348,15 @@ test("proxy credentials are returned only for the matching HTTP proxy challenge"
   }), null);
 });
 
-test("badge text uses the proxy scheme, and the tooltip keeps the full name", () => {
-  assert.equal(badgeLabel(findProfile(createDefaultState(), DIRECT_ID)), "DIR");
-  assert.equal(badgeLabel(findProfile(createDefaultState(), SYSTEM_ID)), "SYS");
-  assert.equal(badgeLabel({ kind: "auto", name: "Auto switch" }), "AUTO");
+test("badge text is the switch state, and the tooltip keeps the full name", () => {
+  assert.equal(badgeLabel(findProfile(createDefaultState(), DIRECT_ID)), "OFF");
+  assert.equal(badgeLabel(findProfile(createDefaultState(), SYSTEM_ID)), "ON");
+  assert.equal(badgeLabel({ kind: "auto", name: "Auto switch" }), "ON");
   assert.equal(badgeLabel(null), "ERR");
-  assert.equal(badgeLabel({ name: "Social proxy", proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 } }), "SOCK");
-  assert.equal(badgeLabel({ name: "家用代理", proxy: { scheme: "socks4", host: "10.0.0.1", port: 1080 } }), "S4");
-  assert.equal(badgeLabel({ name: "Office", proxy: { scheme: "http", host: "proxy.example", port: 8080 } }), "HTTP");
-  assert.equal(badgeLabel({ name: "Secure", proxy: { scheme: "https", host: "proxy.example", port: 443 } }), "HTTPS");
-  assert.equal(badgeLabel({ name: "Mystery" }), "PRX");
+  assert.equal(badgeLabel({ name: "Social proxy", proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 } }), "ON");
+  assert.equal(badgeLabel({ name: "家用代理", proxy: { scheme: "socks4", host: "10.0.0.1", port: 1080 } }), "ON");
+  assert.equal(badgeLabel({ name: "Office", proxy: { scheme: "http", host: "proxy.example", port: 8080 } }), "ON");
+  assert.equal(badgeLabel({ name: "Secure", proxy: { scheme: "https", host: "proxy.example", port: 443 } }), "ON");
   const title = actionTitle({
     name: "Social proxy",
     proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },

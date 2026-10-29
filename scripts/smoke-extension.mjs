@@ -51,7 +51,7 @@ try {
 
   await waitFor(worker.client, `chrome.proxy.settings.get({}).then((details) => details.value.mode === "direct" ? "direct" : "")`);
   const badge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
-  expect(badge === "DIR", `initial badge was ${badge}`);
+  expect(badge === "OFF", `initial badge was ${badge}`);
 
   const probe = await evaluate(worker.client, `(async () => {
     await chrome.storage.local.set({ probe: { builtin: null, port: null } });
@@ -139,7 +139,7 @@ try {
   const stored = await evaluate(worker.client, `chrome.storage.local.get(null).then((value) => JSON.stringify(value))`);
   expect(stored.includes("super-secret-proxy"), "password was not saved locally");
   const socksBadge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
-  expect(socksBadge === "SOCK", `SOCKS badge was ${socksBadge}`);
+  expect(socksBadge === "ON", `SOCKS badge was ${socksBadge}`);
 
   await evaluate(options.client, `document.querySelector("#use-auto").click()`);
   await sleep(700);
@@ -150,7 +150,7 @@ try {
   expect(pac.includes("SOCKS5 10.1.2.3:9050"), "PAC omitted the SOCKS profile");
   expect(!pac.includes("super-secret-proxy"), "PAC included a password");
   const autoBadge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
-  expect(autoBadge === "AUTO", `auto badge was ${autoBadge}`);
+  expect(autoBadge === "ON", `auto badge was ${autoBadge}`);
   await shot(options.client, "options", 1100, 980);
 
   await evaluate(popup.client, `location.reload()`);
@@ -159,6 +159,8 @@ try {
   await sleep(500);
   const direct = await evaluate(worker.client, `chrome.proxy.settings.get({}).then((details) => details.value.mode)`);
   expect(direct === "direct", `direct mode was ${direct}`);
+  const offBadge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
+  expect(offBadge === "OFF", `direct badge was ${offBadge}`);
   await shot(popup.client, "popup-direct-after", 340, 560);
 
   await evaluate(popup.client, `document.querySelector("#add-proxy").click()`);
@@ -207,7 +209,7 @@ try {
   expect(edited.rules?.singleProxy?.port === 8889, `edited port was ${edited.rules?.singleProxy?.port}`);
   expect(edited.rules?.singleProxy?.host === "proxy.popup.test", `edited host was ${edited.rules?.singleProxy?.host}`);
   const httpBadge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
-  expect(httpBadge === "HTTP", `HTTP badge was ${httpBadge}`);
+  expect(httpBadge === "ON", `HTTP badge was ${httpBadge}`);
   const title = await evaluate(worker.client, `chrome.action.getTitle({})`);
   expect(title.includes("Popup proxy"), `tooltip missed the profile name: ${title}`);
   expect(title.includes("proxy.popup.test:8889"), `tooltip missed the server: ${title}`);
