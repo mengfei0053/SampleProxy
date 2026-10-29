@@ -56,6 +56,9 @@ let localWrites = 0;
 let timer = 0;
 let savedTimer = 0;
 let queue = Promise.resolve();
+let adoptQueue = Promise.resolve();
+let dirty = false;
+let persistStamp = 0;
 
 els.editor.addEventListener("submit", (event) => event.preventDefault());
 els.add.addEventListener("click", addProfile);
@@ -98,9 +101,11 @@ els.togglePassword.addEventListener("click", () => {
   els.togglePassword.textContent = showing ? "Show" : "Hide";
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") persistNow();
+  if (document.visibilityState === "hidden" && dirty) persistNow();
 });
-window.addEventListener("pagehide", () => persistNow());
+window.addEventListener("pagehide", () => {
+  if (dirty) persistNow();
+});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "session") {
@@ -108,12 +113,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
     return;
   }
   if (area !== "local" || localWrites > 0) return;
-  if (changes.activeProfileId && !changes.profiles) {
-    state.activeProfileId = changes.activeProfileId.newValue;
-    renderList();
-    renderStatusBits();
-    refreshBanner();
+  if (!changes.profiles && !changes.autoSwitch && !changes.activeProfileId && !changes.schemaVersion) return;
+  if (dirty) {
+    if (changes.activeProfileId && !changes.profiles && !changes.autoSwitch) {
+      state.activeProfileId = changes.activeProfileId.newValue;
+      renderList();
+      renderStatusBits();
+      refreshBanner();
+    }
+    return;
   }
+  adoptStorage();
 });
 
 init();
@@ -127,6 +137,26 @@ async function init() {
       : DIRECT_ID;
     renderAll();
   }
+  refreshBanner();
+}
+
+function adoptStorage() {
+  adoptQueue = adoptQueue.then(adoptLatest, adoptLatest);
+}
+
+async function adoptLatest() {
+  if (dirty || localWrites > 0) return;
+  const stored = normalizeState(await chrome.storage.local.get(null));
+  if (dirty || localWrites > 0) return;
+  const stillThere = findProfile(stored, selectedId);
+  state = stored;
+  if (!stillThere) {
+    selectedId = state.activeProfileId !== AUTO_ID && findProfile(state, state.activeProfileId)
+      ? state.activeProfileId
+      : DIRECT_ID;
+    confirmDelete = false;
+  }
+  renderAll();
   refreshBanner();
 }
 
@@ -460,6 +490,7 @@ function syncFormToState() {
 }
 
 function persistSoon() {
+  dirty = true;
   clearTimeout(timer);
   timer = setTimeout(() => persistNow(), 400);
 }
@@ -468,6 +499,8 @@ function persistNow({ sync = true } = {}) {
   editing = true;
   if (sync) syncFormToState();
   clearTimeout(timer);
+  dirty = false;
+  const stamp = ++persistStamp;
   const includeActive = writeActive;
   writeActive = false;
   const snapshot = normalizeState({
@@ -488,6 +521,7 @@ function persistNow({ sync = true } = {}) {
       await chrome.storage.local.set(payload);
       showSaved();
     } catch (error) {
+      if (stamp === persistStamp) dirty = true;
       console.error("Could not save settings.", error);
       els.saveState.textContent = "Could not save";
     } finally {

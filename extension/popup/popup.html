@@ -22,7 +22,57 @@
   <p id="status" class="banner" hidden></p>
   <div id="profiles" class="profile-list" role="list"></div>
   <p id="hint" class="hint" hidden></p>
+  <form id="editor" class="editor" hidden autocomplete="off" aria-labelledby="editor-title">
+    <h2 id="editor-title">New proxy</h2>
+    <p id="editor-note" class="editor-note"></p>
+    <label>
+      <span>Name</span>
+      <input id="name" type="text" maxlength="60" spellcheck="false" autocomplete="off">
+      <small id="name-error" class="field-error"></small>
+    </label>
+    <label>
+      <span>Type</span>
+      <select id="scheme">
+        <option value="http">HTTP</option>
+        <option value="https">HTTPS</option>
+        <option value="socks4">SOCKS4</option>
+        <option value="socks5" selected>SOCKS5</option>
+      </select>
+    </label>
+    <div class="host-row">
+      <label>
+        <span>Host</span>
+        <input id="host" type="text" maxlength="253" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="127.0.0.1">
+        <small id="host-error" class="field-error"></small>
+      </label>
+      <label>
+        <span>Port</span>
+        <input id="port" type="text" inputmode="numeric" maxlength="5" spellcheck="false" autocomplete="off" placeholder="1080">
+        <small id="port-error" class="field-error"></small>
+      </label>
+    </div>
+    <div class="auth-row">
+      <label>
+        <span>Username</span>
+        <input id="username" type="text" maxlength="256" spellcheck="false" autocomplete="off">
+      </label>
+      <label>
+        <span>Password</span>
+        <span class="password-line">
+          <input id="password" type="password" maxlength="256" autocomplete="new-password">
+          <button id="toggle-password" type="button">Show</button>
+        </span>
+      </label>
+    </div>
+    <p id="auth-note" class="editor-note"></p>
+    <p id="form-error" class="field-error" role="alert"></p>
+    <div class="editor-actions">
+      <button id="save-profile" type="submit">Save</button>
+      <button id="cancel-edit" type="button">Cancel</button>
+    </div>
+  </form>
   <footer>
+    <button id="add-proxy" type="button">Add proxy</button>
     <button id="open-options" type="button">Proxy settings</button>
   </footer>
   <script type="module" src="popup.js"></script>

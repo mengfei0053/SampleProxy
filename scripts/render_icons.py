@@ -6,8 +6,10 @@ import struct
 import zlib
 from pathlib import Path
 
-INK = (36, 48, 68, 255)
-TRACK = (243, 239, 230, 255)
+# Pale tile and track so the mark stays light on a dark Chrome toolbar.
+# The coral knob is the same accent, kept small so the icon is not a dark mass.
+TILE = (247, 243, 234, 255)
+TRACK = (205, 184, 158, 255)
 KNOB = (224, 122, 76, 255)
 
 
@@ -64,7 +66,7 @@ def render(size):
                     py = y + (sy + 0.5) / samples
                     color = (0, 0, 0, 0)
                     tile = sd_round_box(px, py, size / 2, size / 2, size * 0.5, size * 0.5, size * 0.22)
-                    color = over(color, INK, coverage(tile))
+                    color = over(color, TILE, coverage(tile))
                     track = sd_round_box(px, py, size * 0.50, size * 0.52, size * 0.30, size * 0.11, size * 0.11)
                     color = over(color, TRACK, coverage(track))
                     knob = sd_circle(px, py, size * 0.66, size * 0.52, size * 0.16)

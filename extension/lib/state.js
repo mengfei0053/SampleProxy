@@ -1,4 +1,5 @@
 export const SCHEMA_VERSION = 1;
+export const MAX_USER_PROFILES = 40;
 export const DIRECT_ID = "direct";
 export const SYSTEM_ID = "system";
 export const AUTO_ID = "auto";
@@ -87,7 +88,7 @@ export function normalizeState(raw) {
   const users = [];
   const source = Array.isArray(input.profiles) ? input.profiles : [];
   for (const entry of source) {
-    if (users.length >= 40) break;
+    if (users.length >= MAX_USER_PROFILES) break;
     const profile = normalizeUserProfile(entry, seen);
     if (!profile) continue;
     seen.add(profile.id);
@@ -349,6 +350,54 @@ export function resolveTarget(state, host, port) {
     return { profile: findProfile(state, DIRECT_ID), bypassed: true };
   }
   return { profile: chosen, bypassed: false };
+}
+
+export function proxyFieldErrors(proxy) {
+  return {
+    scheme: SCHEMES.includes(proxy?.scheme) ? "" : "Choose HTTP, HTTPS, SOCKS4, or SOCKS5.",
+    host: hostError(proxy?.host),
+    port: cleanPort(proxy?.port) == null ? "Port must be a number from 1 to 65535." : "",
+  };
+}
+
+export function upsertFixedProfile(state, profile) {
+  const next = normalizeState(state);
+  const reject = (error) => ({ ok: false, error, state: next });
+  if (!profile || typeof profile !== "object" || profile.builtin) {
+    return reject("Built-in profiles cannot be edited.");
+  }
+  if (profile.id === DIRECT_ID || profile.id === SYSTEM_ID || profile.id === AUTO_ID) {
+    return reject("Built-in profiles cannot be edited.");
+  }
+  const name = String(profile.name ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  if (!name) return reject("Give the profile a name.");
+  const fields = proxyFieldErrors(profile.proxy);
+  const fieldError = fields.scheme || fields.host || fields.port;
+  if (fieldError) return reject(fieldError);
+  const index = next.profiles.findIndex((item) => item.id === profile.id);
+  if (index === -1) {
+    const count = next.profiles.filter((item) => !item.builtin).length;
+    if (count >= MAX_USER_PROFILES) {
+      return reject("You can save 40 proxy profiles. Delete one in Proxy settings before adding another.");
+    }
+    next.profiles.push({ ...profile, name, builtin: null });
+  } else if (next.profiles[index].builtin) {
+    return reject("Built-in profiles cannot be edited.");
+  } else {
+    const current = next.profiles[index];
+    next.profiles[index] = {
+      ...current,
+      name,
+      proxy: {
+        scheme: profile.proxy.scheme,
+        host: profile.proxy.host,
+        port: profile.proxy.port,
+        username: profile.proxy.username,
+        password: profile.proxy.password,
+      },
+    };
+  }
+  return { ok: true, error: "", state: normalizeState(next) };
 }
 
 export function validateFixedProfile(profile) {

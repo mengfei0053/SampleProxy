@@ -23,10 +23,12 @@ import {
   parsePattern,
   patternMatches,
   portFromPageUrl,
+  proxyFieldErrors,
   rawIsCurrent,
   resolveTarget,
   splitHostPort,
   stable,
+  upsertFixedProfile,
   validateAutoSwitch,
 } from "../extension/lib/state.js";
 
@@ -107,6 +109,86 @@ test("normalizes drafts once and then stays put", () => {
   assert.equal(once.autoSwitch.rules[0].pattern, "*.google.com");
   assert.equal(stable(once), stable(normalizeState(once)));
   assert.equal(rawIsCurrent(once), true);
+});
+
+test("popup save inserts and edits a fixed profile and leaves built-ins alone", () => {
+  const state = createDefaultState();
+  const before = structuredClone(state);
+  const created = createFixedProfile(state.profiles);
+  created.name = "  Home ";
+  created.proxy.host = "LOCALHOST.";
+  created.proxy.username = "socks-user";
+  created.proxy.password = "socks-pass";
+  const inserted = upsertFixedProfile(state, created);
+  assert.deepEqual(state, before);
+  assert.equal(inserted.ok, true);
+  assert.equal(rawIsCurrent(inserted.state), true);
+  assert.equal(inserted.state.activeProfileId, DIRECT_ID);
+  const saved = findProfile(inserted.state, created.id);
+  assert.equal(saved.name, "Home");
+  assert.equal(saved.proxy.scheme, "socks5");
+  assert.equal(saved.proxy.host, "localhost");
+  assert.equal(saved.proxy.port, 1080);
+  assert.equal(saved.proxy.username, "socks-user");
+  assert.equal(saved.proxy.password, "socks-pass");
+  assert.deepEqual(saved.bypass, ["<local>", "localhost", "127.0.0.1", "[::1]"]);
+  assert.deepEqual(inserted.state.profiles.map((profile) => profile.builtin), ["direct", "system", null]);
+
+  const edited = upsertFixedProfile(inserted.state, {
+    id: created.id,
+    name: "Home",
+    color: "#000000",
+    bypass: ["evil.example"],
+    proxy: { scheme: "http", host: "proxy.example", port: "8080", username: "alice", password: "secret" },
+  });
+  const updated = findProfile(edited.state, created.id);
+  assert.equal(edited.ok, true);
+  assert.equal(updated.proxy.scheme, "http");
+  assert.equal(updated.proxy.host, "proxy.example");
+  assert.equal(updated.proxy.port, 8080);
+  assert.equal(updated.proxy.username, "alice");
+  assert.equal(updated.proxy.password, "secret");
+  assert.equal(updated.color, saved.color);
+  assert.deepEqual(updated.bypass, saved.bypass);
+  assert.equal(edited.state.activeProfileId, DIRECT_ID);
+
+  const builtin = upsertFixedProfile(edited.state, {
+    id: DIRECT_ID,
+    name: "Nope",
+    proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },
+  });
+  assert.equal(builtin.ok, false);
+  assert.equal(findProfile(builtin.state, DIRECT_ID).builtin, "direct");
+  assert.equal(builtin.state.profiles.some((profile) => profile.name === "Nope"), false);
+  assert.equal(upsertFixedProfile(edited.state, {
+    id: "p_blankname01",
+    name: " ",
+    proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },
+  }).ok, false);
+  assert.match(upsertFixedProfile(edited.state, {
+    id: "p_badhost0001",
+    name: "Bad",
+    proxy: { scheme: "socks5", host: "bad host", port: 1080 },
+  }).error, /host/i);
+  assert.equal(proxyFieldErrors({ scheme: "socks5", host: "127.0.0.1", port: 1080 }).host, "");
+  assert.match(proxyFieldErrors({ scheme: "socks5", host: "", port: "0" }).port, /1 to 65535/);
+
+  let full = edited.state;
+  while (full.profiles.filter((profile) => !profile.builtin).length < 40) {
+    const extra = createFixedProfile(full.profiles);
+    extra.name = `Proxy ${full.profiles.length}`;
+    const added = upsertFixedProfile(full, extra);
+    assert.equal(added.ok, true);
+    full = added.state;
+  }
+  const overflow = createFixedProfile(full.profiles);
+  overflow.name = "Overflow";
+  assert.equal(upsertFixedProfile(full, overflow).ok, false);
+  const keep = full.profiles.find((profile) => !profile.builtin);
+  const renamed = upsertFixedProfile(full, { id: keep.id, name: "Still here", proxy: keep.proxy });
+  assert.equal(renamed.ok, true);
+  assert.equal(findProfile(renamed.state, keep.id).name, "Still here");
+  assert.equal(renamed.state.profiles.filter((profile) => !profile.builtin).length, 40);
 });
 
 test("new proxies start as local SOCKS5 and get distinct names", () => {
@@ -294,6 +376,16 @@ test("extension manifest is MV3 and only references local files", () => {
   assert.match(background, /onAuthRequired/);
   assert.match(background, /isProxy/);
   assert.match(background, /asyncBlocking/);
+  const popupHtml = fs.readFileSync(path.join(root, "extension/popup/popup.html"), "utf8");
+  const popupJs = fs.readFileSync(path.join(root, "extension/popup/popup.js"), "utf8");
+  for (const id of ["add-proxy", "editor", "name", "scheme", "host", "port", "username", "password", "save-profile", "cancel-edit"]) {
+    assert.match(popupHtml, new RegExp(`id="${id}"`));
+  }
+  assert.match(popupHtml, /value="socks5"/);
+  assert.match(popupJs, /upsertFixedProfile/);
+  assert.match(popupJs, /createFixedProfile/);
+  assert.match(popupJs, /profile\.builtin \? profileButton/);
+  assert.match(popupJs, /chrome\.storage\.local\.set/);
   for (const relative of ["popup/popup.html", "popup/popup.js", "options/options.html", "options/options.js", "background.js", "ui.css"]) {
     const text = fs.readFileSync(path.join(root, "extension", relative), "utf8");
     assert.doesNotMatch(text, /https?:\/\//);
