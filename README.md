@@ -89,6 +89,8 @@ No packages are installed. `node --test` checks profile normalization, proxy con
 
 SampleProxy is not affiliated with SwitchyOmega. Proxy servers can see the traffic you send through them. Use a server you trust. The software is provided under the MIT license, without warranty.
 
+Privacy: [PRIVACY.md](PRIVACY.md).
+
 ## 中文
 
 ### 加载未打包的扩展
@@ -169,6 +171,8 @@ node --test
 ### 声明
 
 SampleProxy 与 SwitchyOmega 无关。代理服务器可以看到经它转发的流量，请只使用你信任的服务器。本软件按 MIT 许可证提供，不含担保。
+
+隐私说明：[PRIVACY.md](PRIVACY.md)。
 
 ## License
 
