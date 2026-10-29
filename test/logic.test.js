@@ -12,6 +12,7 @@ import {
   SYSTEM_ID,
   actionTitle,
   badgeLabel,
+  bypassListError,
   chromeBypassToken,
   cleanHost,
   createDefaultState,
@@ -27,6 +28,7 @@ import {
   proxyFieldErrors,
   rawIsCurrent,
   resolveTarget,
+  splitBypassText,
   splitHostPort,
   stable,
   upsertFixedProfile,
@@ -139,7 +141,7 @@ test("popup save inserts and edits a fixed profile and leaves built-ins alone", 
     id: created.id,
     name: "Home",
     color: "#000000",
-    bypass: ["evil.example"],
+    bypass: ["evil.example", "*.internal.example"],
     proxy: { scheme: "http", host: "proxy.example", port: "8080", username: "alice", password: "secret" },
   });
   const updated = findProfile(edited.state, created.id);
@@ -150,7 +152,19 @@ test("popup save inserts and edits a fixed profile and leaves built-ins alone", 
   assert.equal(updated.proxy.username, "alice");
   assert.equal(updated.proxy.password, "secret");
   assert.equal(updated.color, saved.color);
-  assert.deepEqual(updated.bypass, saved.bypass);
+  assert.deepEqual(updated.bypass, ["evil.example", "*.internal.example"]);
+  const kept = upsertFixedProfile(edited.state, {
+    id: created.id,
+    name: "Home",
+    proxy: updated.proxy,
+  });
+  assert.deepEqual(findProfile(kept.state, created.id).bypass, ["evil.example", "*.internal.example"]);
+  assert.match(upsertFixedProfile(edited.state, {
+    id: created.id,
+    name: "Home",
+    proxy: updated.proxy,
+    bypass: ["bad host"],
+  }).error, /bypass entry/i);
   assert.equal(edited.state.activeProfileId, DIRECT_ID);
 
   const builtin = upsertFixedProfile(edited.state, {
@@ -190,6 +204,23 @@ test("popup save inserts and edits a fixed profile and leaves built-ins alone", 
   assert.equal(renamed.ok, true);
   assert.equal(findProfile(renamed.state, keep.id).name, "Still here");
   assert.equal(renamed.state.profiles.filter((profile) => !profile.builtin).length, 40);
+});
+
+test("a profile bypass list skips those hosts and rejects addresses the proxy model does not use", () => {
+  const state = createDefaultState();
+  const profile = createFixedProfile(state.profiles);
+  profile.name = "Office";
+  profile.bypass = splitBypassText(" localhost, *.internal.example\n10.0.0.8 ");
+  const saved = upsertFixedProfile(state, profile);
+  assert.equal(saved.ok, true);
+  saved.state.activeProfileId = profile.id;
+  const plan = buildApplyPlan(saved.state);
+  assert.deepEqual(plan.config.rules.bypassList, ["localhost", "*.internal.example", "10.0.0.8"]);
+  assert.equal(resolveTarget(saved.state, "www.internal.example", 443).profile.builtin, "direct");
+  assert.equal(resolveTarget(saved.state, "10.0.0.8", 80).bypassed, true);
+  assert.equal(resolveTarget(saved.state, "example.com", 443).bypassed, false);
+  assert.match(bypassListError(["10.0.0.0/8"]), /not valid/i);
+  assert.equal(bypassListError(splitBypassText("*.internal.example, <local>")), "");
 });
 
 test("new proxies start as local SOCKS5 and get distinct names", () => {
@@ -395,7 +426,7 @@ test("extension manifest is MV3 and only references local files", () => {
   assert.match(background, /asyncBlocking/);
   const popupHtml = fs.readFileSync(path.join(root, "extension/popup/popup.html"), "utf8");
   const popupJs = fs.readFileSync(path.join(root, "extension/popup/popup.js"), "utf8");
-  for (const id of ["add-proxy", "editor", "name", "scheme", "host", "port", "username", "password", "save-profile", "cancel-edit"]) {
+  for (const id of ["add-proxy", "editor", "name", "scheme", "host", "port", "username", "password", "bypass", "save-profile", "cancel-edit"]) {
     assert.match(popupHtml, new RegExp(`id="${id}"`));
   }
   assert.match(popupHtml, /value="socks5"/);

@@ -179,6 +179,7 @@ try {
     port.value = "8888";
     username.value = "popup-user";
     password.value = "popup-secret";
+    document.querySelector("#bypass").value = "example.org, *.bypass.test";
   })()`);
   await evaluate(popup.client, `document.querySelector("#save-profile").click()`, false);
   await waitFor(popup.client, `document.querySelector("#editor").hidden && [...document.querySelectorAll(".name")].some((node) => node.textContent === "Popup proxy") ? "ready" : ""`);
@@ -191,6 +192,8 @@ try {
   expect(fromPopup.rules?.singleProxy?.scheme === "http", `popup scheme was ${fromPopup.rules?.singleProxy?.scheme}`);
   expect(fromPopup.rules?.singleProxy?.host === "proxy.popup.test", `popup host was ${fromPopup.rules?.singleProxy?.host}`);
   expect(fromPopup.rules?.singleProxy?.port === 8888, `popup port was ${fromPopup.rules?.singleProxy?.port}`);
+  expect(fromPopup.rules?.bypassList?.includes("example.org"), `bypass list was ${JSON.stringify(fromPopup.rules?.bypassList)}`);
+  expect(fromPopup.rules?.bypassList?.includes("*.bypass.test"), `wildcard bypass missing from ${JSON.stringify(fromPopup.rules?.bypassList)}`);
   expect(!JSON.stringify(fromPopup).includes("popup-secret"), "popup proxy config included a password");
   const popupStored = await evaluate(worker.client, `chrome.storage.local.get(null).then((value) => JSON.stringify(value))`);
   expect(popupStored.includes("popup-secret"), "popup password was not saved locally");
@@ -208,6 +211,7 @@ try {
   const edited = await proxyValue(worker.client);
   expect(edited.rules?.singleProxy?.port === 8889, `edited port was ${edited.rules?.singleProxy?.port}`);
   expect(edited.rules?.singleProxy?.host === "proxy.popup.test", `edited host was ${edited.rules?.singleProxy?.host}`);
+  expect(edited.rules?.bypassList?.includes("example.org"), `edit dropped the bypass list: ${JSON.stringify(edited.rules?.bypassList)}`);
   const httpBadge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
   expect(httpBadge === "ON", `HTTP badge was ${httpBadge}`);
   const title = await evaluate(worker.client, `chrome.action.getTitle({})`);
@@ -219,6 +223,8 @@ try {
 
   await evaluate(options.client, `location.reload()`);
   await waitFor(options.client, `[...document.querySelectorAll(".row-name")].some((node) => node.textContent === "Popup proxy") ? "ready" : ""`);
+  const optionsBypass = await evaluate(options.client, `document.querySelector("#bypass").value`);
+  expect(optionsBypass.includes("example.org") && optionsBypass.includes("*.bypass.test"), `options bypass was ${optionsBypass}`);
 
   await sleep(300);
   expect(workerErrors.length === 0, `service worker errors: ${JSON.stringify(workerErrors)}`);

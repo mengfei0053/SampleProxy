@@ -377,6 +377,10 @@ export function upsertFixedProfile(state, profile) {
   const fields = proxyFieldErrors(profile.proxy);
   const fieldError = fields.scheme || fields.host || fields.port;
   if (fieldError) return reject(fieldError);
+  if (Array.isArray(profile.bypass)) {
+    const bypassProblem = bypassListError(profile.bypass);
+    if (bypassProblem) return reject(bypassProblem);
+  }
   const index = next.profiles.findIndex((item) => item.id === profile.id);
   if (index === -1) {
     const count = next.profiles.filter((item) => !item.builtin).length;
@@ -388,7 +392,7 @@ export function upsertFixedProfile(state, profile) {
     return reject("Built-in profiles cannot be edited.");
   } else {
     const current = next.profiles[index];
-    next.profiles[index] = {
+    const replacement = {
       ...current,
       name,
       proxy: {
@@ -399,8 +403,28 @@ export function upsertFixedProfile(state, profile) {
         password: profile.proxy.password,
       },
     };
+    if (Array.isArray(profile.bypass)) replacement.bypass = profile.bypass;
+    next.profiles[index] = replacement;
   }
   return { ok: true, error: "", state: normalizeState(next) };
+}
+
+export function splitBypassText(value) {
+  return String(value ?? "")
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+export function bypassListError(lines) {
+  for (const line of lines || []) {
+    const parsed = parsePattern(line);
+    if (!parsed.ok) {
+      return `Bypass entry "${clip(line)}" is not valid. Use localhost, *.example.com, or <local>.`;
+    }
+  }
+  return "";
 }
 
 export function validateFixedProfile(profile) {
@@ -409,13 +433,7 @@ export function validateFixedProfile(profile) {
   const problem = hostError(profile.proxy?.host);
   if (problem) return problem;
   if (cleanPort(profile.proxy?.port) == null) return "Port must be a number from 1 to 65535.";
-  for (const line of profile.bypass || []) {
-    const parsed = parsePattern(line);
-    if (!parsed.ok) {
-      return `Bypass entry "${clip(line)}" is not valid. Use localhost, *.example.com, or <local>.`;
-    }
-  }
-  return "";
+  return bypassListError(profile.bypass);
 }
 
 export function validateAutoSwitch(state) {

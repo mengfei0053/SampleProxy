@@ -10,8 +10,10 @@ import {
   findProfile,
   normalizeState,
   portFromPageUrl,
+  bypassListError,
   proxyFieldErrors,
   resolveTarget,
+  splitBypassText,
   supportsProxyAuth,
   upsertFixedProfile,
 } from "../lib/state.js";
@@ -33,6 +35,7 @@ const portInput = document.querySelector("#port");
 const usernameInput = document.querySelector("#username");
 const passwordInput = document.querySelector("#password");
 const togglePassword = document.querySelector("#toggle-password");
+const bypassInput = document.querySelector("#bypass");
 const authNote = document.querySelector("#auth-note");
 const formError = document.querySelector("#form-error");
 const saveButton = document.querySelector("#save-profile");
@@ -245,16 +248,17 @@ function openEditor(mode, profile) {
   editorTitle.textContent = mode === "create" ? "New proxy" : "Edit proxy";
   editorNote.textContent = mode === "create"
     ? "Click the profile in the list after saving to turn it on."
-    : "Bypass list and badge color stay as they are in Proxy settings.";
+    : "Badge color stays as it is in Proxy settings.";
   nameInput.value = draft.profile.name || "";
   schemeInput.value = draft.profile.proxy?.scheme || "socks5";
   hostInput.value = draft.profile.proxy?.host || "";
   portInput.value = draft.profile.proxy?.port ? String(draft.profile.proxy.port) : "";
   usernameInput.value = draft.profile.proxy?.username || "";
   passwordInput.value = draft.profile.proxy?.password || "";
+  bypassInput.value = (draft.profile.bypass || []).join("\n");
   passwordInput.type = "password";
   togglePassword.textContent = "Show";
-  showErrors({ name: "", host: "", port: "", form: "" });
+  showErrors({ name: "", host: "", port: "", bypass: "", form: "" });
   updateAuth();
   render(lastStatus, lastTab);
   nameInput.focus();
@@ -289,6 +293,7 @@ function profileFromForm() {
     username: usernameInput.value,
     password: passwordInput.value,
   };
+  profile.bypass = splitBypassText(bypassInput.value);
   return profile;
 }
 
@@ -298,6 +303,7 @@ function collectErrors(profile) {
     name: profile.name ? "" : "Give the profile a name.",
     host: fields.host,
     port: fields.port,
+    bypass: bypassListError(profile.bypass),
     form: fields.scheme,
   };
 }
@@ -306,6 +312,7 @@ function showErrors(errors) {
   setField("name", errors.name);
   setField("host", errors.host);
   setField("port", errors.port);
+  setField("bypass", errors.bypass);
   formError.textContent = errors.form || "";
 }
 
@@ -324,7 +331,7 @@ async function saveEditor(event) {
   if (!draft || saving) return;
   const profile = profileFromForm();
   const errors = collectErrors(profile);
-  if (errors.name || errors.host || errors.port || errors.form) {
+  if (errors.name || errors.host || errors.port || errors.bypass || errors.form) {
     showErrors(errors);
     return;
   }
@@ -335,7 +342,7 @@ async function saveEditor(event) {
     const latest = normalizeState(await chrome.storage.local.get(null));
     const result = upsertFixedProfile(latest, profile);
     if (!result.ok) {
-      showErrors({ name: "", host: "", port: "", form: result.error });
+      showErrors({ name: "", host: "", port: "", bypass: "", form: result.error });
       return;
     }
     const snapshot = result.state;
@@ -350,7 +357,7 @@ async function saveEditor(event) {
     list.querySelector(`[data-profile-id="${cssEscape(savedId)}"]`)?.focus();
   } catch (error) {
     console.error("Could not save the proxy profile.", error);
-    showErrors({ name: "", host: "", port: "", form: "Could not save this profile." });
+    showErrors({ name: "", host: "", port: "", bypass: "", form: "Could not save this profile." });
   } finally {
     saving = false;
     saveButton.disabled = false;

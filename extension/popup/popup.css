@@ -206,7 +206,8 @@ h1 {
 
 .editor input[type="text"],
 .editor input[type="password"],
-.editor select {
+.editor select,
+.editor textarea {
   width: 100%;
   border: 1px solid var(--line-strong);
   background: #fff;
@@ -214,7 +215,13 @@ h1 {
   padding: 7px 8px;
 }
 
-.editor input[aria-invalid="true"] { border-color: var(--danger); }
+.editor textarea {
+  resize: vertical;
+  min-height: 58px;
+}
+
+.editor input[aria-invalid="true"],
+.editor textarea[aria-invalid="true"] { border-color: var(--danger); }
 
 .host-row,
 .auth-row {
