@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "SampleProxy",
+  "version": "1.0.0",
+  "description": "Switch Chrome between a direct connection, the system proxy, or a fixed proxy server.",
+  "minimum_chrome_version": "111",
+  "homepage_url": "https://github.com/mengfei0053/SampleProxy",
+  "permissions": ["proxy", "storage", "webRequest", "webRequestAuthProvider", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "SampleProxy",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SampleProxy</title>
+  <link rel="stylesheet" href="../ui.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="popup-head">
+    <div class="popup-id">
+      <img src="../icons/icon32.png" width="28" height="28" alt="">
+      <div>
+        <p class="eyebrow">SampleProxy</p>
+        <h1 id="current-name">Direct</h1>
+      </div>
+    </div>
+    <span id="current-swatch" class="swatch" title=""></span>
+  </header>
+  <p id="current-detail" class="detail"></p>
+  <p id="tab-line" class="tab-line" hidden></p>
+  <p id="status" class="banner" hidden></p>
+  <div id="profiles" class="profile-list" role="list"></div>
+  <p id="hint" class="hint" hidden></p>
+  <footer>
+    <button id="open-options" type="button">Proxy settings</button>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
