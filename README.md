@@ -25,7 +25,7 @@ Chrome copies nothing and does not need a build step. After you change the files
 1. Click the toolbar icon, then **Add proxy**. The form starts as SOCKS5 on `127.0.0.1` port `1080`. Set the name, type (SOCKS5, SOCKS4, HTTP, or HTTPS), host, and port. HTTP and HTTPS can also store a username and password. Click **Save**.
 2. The profile appears in the popup list. Click it to use it. **Edit** on that row changes the same fields later.
 3. **Proxy settings** still opens the full page. **New proxy** there creates the same kind of profile, and that page is where bypass lists, badge colors, and auto-switch rules are edited. Text fields on that page save about half a second after you stop typing.
-4. The badge shows the start of the profile name, in that profile's color. **Direct** shows `DIR`.
+4. The badge shows a short code for the proxy type (`SOCK`, `S4`, `HTTP`, or `HTTPS`), in that profile's color. Hover the icon for the full name and server. **Direct** shows `DIR`.
 5. Click **Direct** in the popup when you want a connection with no proxy.
 
 Built-in Direct and System profiles cannot be edited or deleted. Auto switch is not a proxy profile, so the popup does not edit it here.
@@ -53,7 +53,12 @@ The System profile cannot be the default or a rule target. A PAC script has no r
 | `SYS` | Operating system proxy |
 | `AUTO` | Auto switch |
 | `ERR` | The latest settings were not applied. The previous working proxy stays in place. |
-| other | The first letters of the active fixed profile |
+| `SOCK` | SOCKS5 |
+| `S4` | SOCKS4 |
+| `HTTP` | HTTP |
+| `HTTPS` | HTTPS |
+
+Hover the toolbar icon for the full profile name and `scheme · host:port`. The popup list is where the long name is shown.
 
 ### Permissions
 
@@ -106,7 +111,7 @@ SampleProxy is not affiliated with SwitchyOmega. Proxy servers can see the traff
 1. 点击工具栏图标，再点 **Add proxy**（添加代理）。表单默认是 `127.0.0.1` 端口 `1080` 的 SOCKS5。填写名称、类型（SOCKS5、SOCKS4、HTTP 或 HTTPS）、主机和端口。HTTP 和 HTTPS 还可以填写用户名和密码。点击 **Save**（保存）。
 2. 配置会出现在弹窗列表里。点击它即可使用。该行的 **Edit**（编辑）以后可以改同样的字段。
 3. **Proxy settings**（代理设置）仍然打开完整设置页。那里的 **New proxy**（新建代理）会建立同一种配置；绕过列表、角标颜色和自动切换规则在设置页修改。设置页的文本大约在停止输入半秒后写入。
-4. 角标显示配置名称的开头，背景是该配置的颜色。直连显示 `DIR`。
+4. 角标显示代理类型的短代码（`SOCK`、`S4`、`HTTP` 或 `HTTPS`），背景是该配置的颜色。鼠标悬停在图标上可以看到完整名称和服务器。直连显示 `DIR`。
 5. 要取消代理时，在弹窗里点 **Direct**。
 
 内置的 Direct（直连）和 System（系统代理）不能编辑或删除。Auto switch（自动切换）不是代理配置，弹窗里不能把它当成代理来编辑。
@@ -134,7 +139,12 @@ SampleProxy is not affiliated with SwitchyOmega. Proxy servers can see the traff
 | `SYS` | 操作系统代理 |
 | `AUTO` | 自动切换 |
 | `ERR` | 最新设置没有生效。之前可用的代理保持不变。 |
-| 其他 | 当前固定配置名称的前几个字符 |
+| `SOCK` | SOCKS5 |
+| `S4` | SOCKS4 |
+| `HTTP` | HTTP |
+| `HTTPS` | HTTPS |
+
+鼠标悬停在工具栏图标上可以看到完整配置名和 `scheme · host:port`。长名称显示在弹窗列表里。
 
 ### 权限
 

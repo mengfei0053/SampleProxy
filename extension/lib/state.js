@@ -159,16 +159,28 @@ export function describeProfile(profile) {
   return `${scheme} · ${host}${port}`;
 }
 
+const BADGE_SCHEME = {
+  http: "HTTP",
+  https: "HTTPS",
+  socks4: "S4",
+  socks5: "SOCK",
+};
+
 export function badgeLabel(profile) {
   if (!profile) return "ERR";
   if (profile.kind === "auto") return "AUTO";
   if (profile.builtin === "direct") return "DIR";
   if (profile.builtin === "system") return "SYS";
-  const name = String(profile.name || "").trim();
-  if (!name) return "PRX";
-  const ascii = name.replace(/[^A-Za-z0-9]/g, "");
-  if (ascii) return ascii.slice(0, 4).toUpperCase();
-  return Array.from(name).slice(0, 2).join("");
+  return BADGE_SCHEME[profile.proxy?.scheme] || "PRX";
+}
+
+export function actionTitle(profile, error) {
+  const name = String(profile?.name || "").trim() || "SampleProxy";
+  const detail = describeProfile(profile);
+  const lines = [`SampleProxy: ${name}`];
+  if (detail) lines.push(detail);
+  if (error) lines.push(String(error));
+  return lines.join("\n");
 }
 
 export function cleanHost(value) {

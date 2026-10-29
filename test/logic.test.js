@@ -10,6 +10,7 @@ import {
   AUTO_ID,
   DIRECT_ID,
   SYSTEM_ID,
+  actionTitle,
   badgeLabel,
   chromeBypassToken,
   cleanHost,
@@ -347,13 +348,30 @@ test("proxy credentials are returned only for the matching HTTP proxy challenge"
   }), null);
 });
 
-test("badge text stays short", () => {
+test("badge text uses the proxy scheme, and the tooltip keeps the full name", () => {
   assert.equal(badgeLabel(findProfile(createDefaultState(), DIRECT_ID)), "DIR");
   assert.equal(badgeLabel(findProfile(createDefaultState(), SYSTEM_ID)), "SYS");
   assert.equal(badgeLabel({ kind: "auto", name: "Auto switch" }), "AUTO");
-  assert.equal(badgeLabel({ name: "Home proxy" }), "HOME");
-  assert.equal(badgeLabel({ name: "家用代理" }), "家用");
-  assert.equal(badgeLabel({ name: "123vpn" }), "123V");
+  assert.equal(badgeLabel(null), "ERR");
+  assert.equal(badgeLabel({ name: "Social proxy", proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 } }), "SOCK");
+  assert.equal(badgeLabel({ name: "家用代理", proxy: { scheme: "socks4", host: "10.0.0.1", port: 1080 } }), "S4");
+  assert.equal(badgeLabel({ name: "Office", proxy: { scheme: "http", host: "proxy.example", port: 8080 } }), "HTTP");
+  assert.equal(badgeLabel({ name: "Secure", proxy: { scheme: "https", host: "proxy.example", port: 443 } }), "HTTPS");
+  assert.equal(badgeLabel({ name: "Mystery" }), "PRX");
+  const title = actionTitle({
+    name: "Social proxy",
+    proxy: { scheme: "socks5", host: "127.0.0.1", port: 1080 },
+  }, "");
+  assert.match(title, /Social proxy/);
+  assert.match(title, /SOCKS5 · 127\.0\.0\.1:1080/);
+  assert.equal(title.includes("SOCI"), false);
+  const failed = actionTitle({
+    name: "Office",
+    proxy: { scheme: "http", host: "proxy.example", port: 8080 },
+  }, "Chrome rejected the proxy settings.");
+  assert.match(failed, /Office/);
+  assert.match(failed, /HTTP · proxy\.example:8080/);
+  assert.match(failed, /rejected the proxy/);
 });
 
 test("extension manifest is MV3 and only references local files", () => {

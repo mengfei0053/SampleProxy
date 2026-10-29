@@ -206,6 +206,11 @@ try {
   const edited = await proxyValue(worker.client);
   expect(edited.rules?.singleProxy?.port === 8889, `edited port was ${edited.rules?.singleProxy?.port}`);
   expect(edited.rules?.singleProxy?.host === "proxy.popup.test", `edited host was ${edited.rules?.singleProxy?.host}`);
+  const httpBadge = await evaluate(worker.client, `chrome.action.getBadgeText({})`);
+  expect(httpBadge === "HTTP", `HTTP badge was ${httpBadge}`);
+  const title = await evaluate(worker.client, `chrome.action.getTitle({})`);
+  expect(title.includes("Popup proxy"), `tooltip missed the profile name: ${title}`);
+  expect(title.includes("proxy.popup.test:8889"), `tooltip missed the server: ${title}`);
   const lines = await evaluate(popup.client, `[...document.querySelectorAll(".profile-line .name")].map((node) => node.textContent)`);
   expect(!lines.includes("Direct") && !lines.includes("System") && !lines.includes("Auto switch"),
     `built-in rows became editable: ${lines.join(",")}`);

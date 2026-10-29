@@ -1,5 +1,6 @@
 import { buildApplyPlan } from "./lib/apply.js";
 import {
+  actionTitle,
   badgeLabel,
   credentialsForChallenge,
   ERROR_COLOR,
@@ -107,8 +108,8 @@ async function provideCredentials(details) {
 
 async function paintBadge(profile, error) {
   const text = error ? "ERR" : badgeLabel(profile);
-  const color = error ? ERROR_COLOR : profile.color;
-  const title = error ? `SampleProxy: ${error}` : `SampleProxy: ${profile.name}`;
+  const color = error ? ERROR_COLOR : profile?.color;
+  const title = actionTitle(profile, error);
   try {
     await chrome.action.setBadgeBackgroundColor({ color });
     if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ color: "#ffffff" });
