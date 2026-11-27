@@ -5,27 +5,43 @@ import vm from "node:vm";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildApplyPlan, fixedServerConfig } from "../extension/lib/apply.js";
-import { buildPac, pacResult } from "../extension/lib/pac.js";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGES,
+  LOCALES,
+  SUPPORTED_LANGUAGES,
+  formatRuleCount,
+  normalizeLanguage,
+  t,
+} from "../extension/lib/i18n.js";
+import { buildFixedPac, buildPac, pacResult } from "../extension/lib/pac.js";
 import {
   AUTO_ID,
   DIRECT_ID,
   SYSTEM_ID,
   actionTitle,
+  activeDescriptor,
   badgeLabel,
+  bypassHasCidr,
   bypassListError,
   chromeBypassToken,
   cleanHost,
   createDefaultState,
   createFixedProfile,
   credentialsForChallenge,
+  describeProfile,
+  effectiveBypass,
   findProfile,
   hostError,
   isProxyHost,
+  mergeBypassLists,
   normalizeState,
   parsePattern,
   patternMatches,
   ipInCidr,
   portFromPageUrl,
+  profileBypasses,
+  profileDisplayName,
   proxyFieldErrors,
   rawIsCurrent,
   resolveTarget,
@@ -470,9 +486,351 @@ test("extension manifest is MV3 and only references local files", () => {
   assert.match(popupJs, /createFixedProfile/);
   assert.match(popupJs, /profile\.builtin \? profileButton/);
   assert.match(popupJs, /chrome\.storage\.local\.set/);
-  for (const relative of ["popup/popup.html", "popup/popup.js", "options/options.html", "options/options.js", "background.js", "ui.css"]) {
+  for (const relative of [
+    "popup/popup.html",
+    "popup/popup.js",
+    "options/options.html",
+    "options/options.js",
+    "background.js",
+    "ui.css",
+    "lib/i18n.js",
+    ...SUPPORTED_LANGUAGES.map((code) => `lib/locales/${code}.js`),
+  ]) {
     const text = fs.readFileSync(path.join(root, "extension", relative), "utf8");
     assert.doesNotMatch(text, /https?:\/\//);
     assert.doesNotMatch(text, /<script(?![^>]*\bsrc=)[^>]*>/i);
   }
+  const optionsHtml = fs.readFileSync(path.join(root, "extension/options/options.html"), "utf8");
+  const optionsJs = fs.readFileSync(path.join(root, "extension/options/options.js"), "utf8");
+  for (const id of ["language", "global-bypass-card", "global-bypass", "global-bypass-error"]) {
+    assert.match(optionsHtml, new RegExp(`id="${id}"`));
+  }
+  assert.match(optionsJs, /globalBypass/);
+  assert.match(optionsJs, /language/);
+  assert.match(background, /globalBypass/);
+  assert.match(background, /language/);
+});
+
+test("language and globalBypass normalize cleanly and stay backward compatible with old saves", () => {
+  const defaults = createDefaultState();
+  assert.equal(defaults.language, DEFAULT_LANGUAGE);
+  assert.equal(defaults.language, "en");
+  assert.deepEqual(defaults.globalBypass, []);
+
+  assert.equal(normalizeLanguage(undefined), "en");
+  assert.equal(normalizeLanguage(null), "en");
+  assert.equal(normalizeLanguage(""), "en");
+  assert.equal(normalizeLanguage(42), "en");
+  assert.equal(normalizeLanguage("de"), "en");
+  assert.equal(normalizeLanguage("en-US"), "en");
+  assert.equal(normalizeLanguage(" ZH "), "zh");
+  assert.equal(normalizeLanguage("RU"), "ru");
+  assert.equal(normalizeLanguage("es"), "es");
+  assert.equal(normalizeLanguage("fr"), "fr");
+  assert.equal(normalizeLanguage("ja"), "ja");
+
+  // Simulate an older saved payload lacking language and globalBypass
+  const legacy = {
+    schemaVersion: 1,
+    profiles: [
+      { id: DIRECT_ID, name: "Direct", color: "#2f6f4e", builtin: "direct" },
+      { id: SYSTEM_ID, name: "System", color: "#2c5f8a", builtin: "system" },
+    ],
+    activeProfileId: DIRECT_ID,
+    autoSwitch: { defaultProfileId: DIRECT_ID, rules: [] },
+  };
+  assert.equal(rawIsCurrent(legacy), false);
+  const migrated = normalizeState(legacy);
+  assert.equal(migrated.language, "en");
+  assert.deepEqual(migrated.globalBypass, []);
+  assert.equal(rawIsCurrent(migrated), true);
+  assert.equal(stable(migrated), stable(normalizeState(migrated)));
+
+  // Trims entries and ignores blanks in globalBypass while keeping order
+  const withSettings = normalizeState({
+    ...legacy,
+    language: "JA",
+    globalBypass: ["  *.corp.example ", "", "10.0.0.0/8", "  "],
+  });
+  assert.equal(withSettings.language, "ja");
+  assert.deepEqual(withSettings.globalBypass, ["*.corp.example", "10.0.0.0/8"]);
+  assert.equal(rawIsCurrent(withSettings), true);
+
+  // Popup upsert preserves language and globalBypass
+  const created = createFixedProfile(withSettings.profiles);
+  created.name = "Corp";
+  const upserted = upsertFixedProfile(withSettings, created);
+  assert.equal(upserted.ok, true);
+  assert.equal(upserted.state.language, "ja");
+  assert.deepEqual(upserted.state.globalBypass, ["*.corp.example", "10.0.0.0/8"]);
+});
+
+test("globalBypass merges and deduplicates in stable order for fixed proxies", () => {
+  const { state, http } = sample();
+  http.bypass = ["<local>", "LocalHost", "127.0.0.1", "[::1]", "*.team.example"];
+  state.globalBypass = [
+    "localhost",
+    "::1",
+    "*.TEAM.example",
+    "*.corp.example",
+    "intranet.example:8443",
+    "INTRANET.EXAMPLE:8443",
+    ".sub.example",
+    "*.sub.example",
+  ];
+  state.activeProfileId = http.id;
+
+  const merged = effectiveBypass(http, state.globalBypass);
+  assert.deepEqual(merged, [
+    "<local>",
+    "LocalHost",
+    "127.0.0.1",
+    "[::1]",
+    "*.team.example",
+    "*.corp.example",
+    "intranet.example:8443",
+    ".sub.example",
+    "*.sub.example",
+  ]);
+  assert.deepEqual(mergeBypassLists(["2001:0db8::/32"], ["[2001:DB8::]/32", "10.0.0.0/8"]), [
+    "2001:0db8::/32",
+    "10.0.0.0/8",
+  ]);
+
+  const plan = buildApplyPlan(state);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.config.mode, "fixed_servers");
+  assert.deepEqual(plan.config, fixedServerConfig(http, state.globalBypass));
+  assert.deepEqual(plan.config.rules.bypassList, [
+    "<local>",
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+    "*.team.example",
+    "*.corp.example",
+    "intranet.example:8443",
+    ".sub.example",
+    "*.sub.example",
+  ]);
+
+  assert.equal(profileBypasses(http, "app.team.example", 443, state.globalBypass), true);
+  assert.equal(profileBypasses(http, "app.corp.example", 443, state.globalBypass), true);
+  assert.equal(profileBypasses(http, "intranet.example", 8443, state.globalBypass), true);
+  assert.equal(profileBypasses(http, "intranet.example", 443, state.globalBypass), false);
+  assert.equal(resolveTarget(state, "app.corp.example", 443).bypassed, true);
+  assert.equal(resolveTarget(state, "app.corp.example", 443).profile.builtin, "direct");
+  assert.equal(resolveTarget(state, "public.example", 443).bypassed, false);
+  assert.equal(resolveTarget(state, "public.example", 443).profile.id, http.id);
+});
+
+test("CIDR present only in globalBypass forces PAC path and matches both profile and global entries", () => {
+  const { state, http } = sample();
+  http.bypass = ["localhost", "*.profile.example"];
+  state.globalBypass = ["10.0.0.0/8", "2001:db8::/32", "localhost", "*.global.example"];
+  state.activeProfileId = http.id;
+
+  assert.equal(bypassHasCidr(http), false);
+  assert.equal(bypassHasCidr(http, state.globalBypass), true);
+
+  const plan = buildApplyPlan(state);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.config.mode, "pac_script");
+  const script = plan.config.pacScript.data;
+  assert.equal(script, buildFixedPac(http, state.globalBypass));
+  assert.match(script, /isInNetEx/);
+  assert.equal(script.includes("10.0.0.0/8"), true);
+  assert.equal(script.includes("2001:db8::/32"), true);
+  assert.equal(script.includes(http.proxy.password), false);
+
+  const find = runPac(script);
+  assert.equal(find("http://localhost/", "localhost"), "DIRECT");
+  assert.equal(find("https://a.profile.example/", "a.profile.example"), "DIRECT");
+  assert.equal(find("https://b.global.example/", "b.global.example"), "DIRECT");
+  assert.equal(find("http://10.42.0.1/", "10.42.0.1"), "DIRECT");
+  assert.equal(find("http://[2001:db8::99]/", "2001:db8::99"), "DIRECT");
+  assert.equal(find("http://11.0.0.1/", "11.0.0.1"), "PROXY proxy.example:8080");
+  assert.equal(find("http://[2001:db9::99]/", "2001:db9::99"), "PROXY proxy.example:8080");
+  assert.equal(find("https://example.org/", "example.org"), "PROXY proxy.example:8080");
+
+  assert.equal(resolveTarget(state, "10.42.0.1", 80).bypassed, true);
+  assert.equal(resolveTarget(state, "2001:db8::99", 80).bypassed, true);
+  assert.equal(resolveTarget(state, "b.global.example", 443).bypassed, true);
+  assert.equal(resolveTarget(state, "example.org", 443).bypassed, false);
+});
+
+test("Auto switch applies profile bypass plus globalBypass while preserving first-match-wins", () => {
+  const { state, socks, http } = sample();
+  http.bypass = ["docs.google.com"];
+  socks.bypass = ["*.local.test"];
+  state.globalBypass = ["mail.google.com", "10.0.0.0/8", "bypass.example.org"];
+  state.activeProfileId = AUTO_ID;
+  state.autoSwitch.defaultProfileId = socks.id;
+  state.autoSwitch.rules = [
+    { id: "r_rule000001", pattern: "*.google.com", profileId: http.id },
+    { id: "r_rule000002", pattern: "www.google.com", profileId: socks.id },
+    { id: "r_rule000003", pattern: "direct.example", profileId: DIRECT_ID },
+  ];
+
+  const route = routeWithPac(state);
+  // First matching rule wins (*.google.com -> http, not www.google.com -> socks)
+  assert.equal(route("https://www.google.com/"), "PROXY proxy.example:8080");
+  // Profile bypass on matched rule target
+  assert.equal(route("https://docs.google.com/"), "DIRECT");
+  assert.equal(resolveTarget(state, "docs.google.com", 443).bypassed, true);
+  // Global bypass on matched rule target
+  assert.equal(route("https://mail.google.com/"), "DIRECT");
+  assert.equal(resolveTarget(state, "mail.google.com", 443).bypassed, true);
+  // Global bypass on fallback proxy target (host + CIDR)
+  assert.equal(route("https://bypass.example.org/"), "DIRECT");
+  assert.equal(route("http://10.8.8.8/"), "DIRECT");
+  // Profile bypass on fallback proxy target
+  assert.equal(route("https://app.local.test/"), "DIRECT");
+  // Non-bypassed fallback uses socks
+  assert.equal(route("https://example.org/"), "SOCKS5 127.0.0.1:1080");
+  // Direct rule stays direct without bypassed flag
+  assert.equal(route("https://direct.example/"), "DIRECT");
+  assert.equal(resolveTarget(state, "direct.example", 443).bypassed, false);
+
+  // Proxy credentials are NOT supplied when host is globally bypassed in Auto switch
+  assert.equal(credentialsForChallenge(state, {
+    isProxy: true,
+    url: "https://mail.google.com/",
+    challenger: { host: "proxy.example", port: 8080 },
+  }), null);
+  assert.deepEqual(credentialsForChallenge(state, {
+    isProxy: true,
+    url: "https://www.google.com/",
+    challenger: { host: "proxy.example", port: 8080 },
+  }), { username: http.proxy.username, password: http.proxy.password });
+});
+
+test("Direct and System ignore globalBypass and never wrap System in PAC; invalid globalBypass blocks proxy plans only", () => {
+  const { state, http } = sample();
+  state.globalBypass = ["10.0.0.0/8", "*.corp.example"];
+
+  const direct = findProfile(state, DIRECT_ID);
+  const system = findProfile(state, SYSTEM_ID);
+  assert.deepEqual(effectiveBypass(direct, state.globalBypass), []);
+  assert.deepEqual(effectiveBypass(system, state.globalBypass), []);
+  assert.equal(bypassHasCidr(direct, state.globalBypass), false);
+  assert.equal(bypassHasCidr(system, state.globalBypass), false);
+
+  state.activeProfileId = DIRECT_ID;
+  assert.deepEqual(buildApplyPlan(state).config, { mode: "direct" });
+  assert.equal(resolveTarget(state, "10.0.0.1", 80).profile.builtin, "direct");
+  assert.equal(resolveTarget(state, "10.0.0.1", 80).bypassed, false);
+
+  state.activeProfileId = SYSTEM_ID;
+  assert.deepEqual(buildApplyPlan(state).config, { mode: "system" });
+  assert.equal(resolveTarget(state, "10.0.0.1", 80).profile.builtin, "system");
+  assert.equal(resolveTarget(state, "10.0.0.1", 80).bypassed, false);
+
+  // Invalid globalBypass entry blocks fixed proxy and auto switch, but Direct/System remain selectable
+  state.globalBypass = ["10.0.0.0/33"];
+  assert.match(bypassListError(state.globalBypass, { global: true }), /global bypass entry/i);
+  assert.match(bypassListError(state.globalBypass, { global: true }), /0 to 32/);
+
+  state.activeProfileId = DIRECT_ID;
+  assert.equal(buildApplyPlan(state).ok, true);
+  state.activeProfileId = SYSTEM_ID;
+  assert.equal(buildApplyPlan(state).ok, true);
+
+  state.activeProfileId = http.id;
+  const fixedFail = buildApplyPlan(state);
+  assert.equal(fixedFail.ok, false);
+  assert.match(fixedFail.error, /0 to 32/);
+
+  state.activeProfileId = AUTO_ID;
+  state.autoSwitch.defaultProfileId = http.id;
+  const autoFail = buildApplyPlan(state);
+  assert.equal(autoFail.ok, false);
+  assert.match(autoFail.error, /0 to 32/);
+  assert.throws(() => buildPac(state), /0 to 32/);
+});
+
+test("all 6 locale dictionaries are complete, consistent, and produce localized copy and errors", () => {
+  assert.deepEqual(SUPPORTED_LANGUAGES, ["en", "zh", "ru", "es", "fr", "ja"]);
+  assert.deepEqual(LANGUAGES.map((item) => item.label), [
+    "English",
+    "中文",
+    "Русский",
+    "Español",
+    "Français",
+    "日本語",
+  ]);
+
+  const baseKeys = Object.keys(LOCALES.en).sort();
+  const placeholderPattern = /\{[a-zA-Z0-9_]+\}/g;
+  const richKeys = ["options.bypassHint", "options.globalBypassHint", "options.patternsHint"];
+
+  for (const code of SUPPORTED_LANGUAGES) {
+    const dict = LOCALES[code];
+    assert.deepEqual(Object.keys(dict).sort(), baseKeys, `key mismatch in ${code}`);
+    for (const key of baseKeys) {
+      const value = dict[key];
+      assert.equal(typeof value, "string", `${code}.${key} is not a string`);
+      assert.ok(value.trim().length > 0, `${code}.${key} is empty`);
+      const expectedVars = [...new Set(LOCALES.en[key].match(placeholderPattern) || [])].sort();
+      const actualVars = [...new Set(value.match(placeholderPattern) || [])].sort();
+      assert.deepEqual(actualVars, expectedVars, `placeholder mismatch in ${code}.${key}`);
+    }
+    for (const richKey of richKeys) {
+      const ticks = (dict[richKey].match(/`/g) || []).length;
+      assert.equal(ticks % 2, 0, `unbalanced backticks in ${code}.${richKey}`);
+    }
+  }
+
+  // Built-in names and descriptions translate while profile IDs stay fixed
+  const state = createDefaultState();
+  for (const code of SUPPORTED_LANGUAGES) {
+    state.language = code;
+    state.activeProfileId = DIRECT_ID;
+    const directDesc = activeDescriptor(state);
+    assert.equal(directDesc.id, DIRECT_ID);
+    assert.equal(directDesc.name, LOCALES[code]["builtin.directName"]);
+    assert.equal(describeProfile(directDesc, code), LOCALES[code]["builtin.directDesc"]);
+    assert.equal(actionTitle(directDesc, "", code), `SampleProxy: ${LOCALES[code]["builtin.directName"]}\n${LOCALES[code]["builtin.directDesc"]}`);
+
+    state.activeProfileId = SYSTEM_ID;
+    const systemDesc = activeDescriptor(state);
+    assert.equal(systemDesc.id, SYSTEM_ID);
+    assert.equal(systemDesc.name, LOCALES[code]["builtin.systemName"]);
+
+    state.activeProfileId = AUTO_ID;
+    const autoDesc = activeDescriptor(state);
+    assert.equal(autoDesc.id, AUTO_ID);
+    assert.equal(autoDesc.name, LOCALES[code]["builtin.autoName"]);
+
+    // Non-English locales produce distinct localized built-in names and validation messages
+    if (code !== "en") {
+      assert.notEqual(profileDisplayName(findProfile(state, DIRECT_ID), code), "Direct");
+      assert.notEqual(hostError("", code), hostError("", "en"));
+      assert.notEqual(bypassListError(["bad host"], { lang: code, global: true }), bypassListError(["bad host"], { lang: "en", global: true }));
+    }
+  }
+
+  // Custom profile names are never altered by locale
+  const custom = { id: "p_custom0001", name: "My Office", builtin: null, proxy: { scheme: "http", host: "proxy.example", port: 8080 } };
+  assert.equal(profileDisplayName(custom, "zh"), "My Office");
+  assert.match(actionTitle(custom, "", "ja"), /^SampleProxy: My Office\nHTTP · proxy\.example:8080$/);
+
+  // Pluralization across languages (including Russian 3-form plurals)
+  assert.equal(formatRuleCount("en", 0), "0 rules");
+  assert.equal(formatRuleCount("en", 1), "1 rule");
+  assert.equal(formatRuleCount("en", 2), "2 rules");
+  assert.equal(formatRuleCount("zh", 3), "3 条规则");
+  assert.equal(formatRuleCount("ja", 3), "3 件のルール");
+  assert.equal(formatRuleCount("ru", 1), "1 правило");
+  assert.equal(formatRuleCount("ru", 2), "2 правила");
+  assert.equal(formatRuleCount("ru", 5), "5 правил");
+  assert.equal(formatRuleCount("ru", 21), "21 правило");
+  assert.equal(formatRuleCount("ru", 22), "22 правила");
+  assert.equal(formatRuleCount("ru", 25), "25 правил");
+  assert.equal(formatRuleCount("es", 1), "1 regla");
+  assert.equal(formatRuleCount("es", 4), "4 reglas");
+  assert.equal(formatRuleCount("fr", 1), "1 règle");
+  assert.equal(formatRuleCount("fr", 4), "4 règles");
+
+  // Unknown language falls back to English
+  assert.equal(t("unknown-lang", "builtin.directName"), "Direct");
 });

@@ -30,6 +30,13 @@ Chrome copies nothing and does not need a build step. After you change the files
 
 Built-in Direct and System profiles cannot be edited or deleted. Auto switch is not a proxy profile, so the popup does not edit it here.
 
+### Language & Global bypass
+
+In **Proxy settings**:
+
+- **Language** switches the extension UI (options page, popup, built-in profile names, validation messages, and toolbar tooltip) between English (default), 中文, Русский, Español, Français, and 日本語. The choice is saved in `chrome.storage.local` and applies immediately without reloading the extension.
+- **Global bypass** lists hosts and CIDR ranges (`<local>`, `example.com`, `*.internal.example`, `example.com:443`, `10.0.0.0/8`, `2001:db8::/32`) that skip all custom proxy profiles and Auto switch proxy targets. Each proxy uses the deduplicated merge of its own Bypass list plus Global bypass (using a PAC script when either list contains CIDR entries). Direct is already direct, and Chrome's System proxy mode does not accept an extension bypass list, so Global bypass does not apply while System is active.
+
 ### Auto switch
 
 Auto switch builds a PAC script and gives it to Chrome (`chrome.proxy` mode `pac_script`). In **Proxy settings**, add rules, choose the default profile, then click **Use auto switch**. The popup shows which profile the current http(s) tab would use.
@@ -41,7 +48,7 @@ Auto switch builds a PAC script and gives it to Chrome (`chrome.proxy` mode `pac
 | `.example.com` | `www.example.com` and deeper subdomains | `example.com` |
 | `example.com:443` | that host on port 443 | the same host on another port |
 
-The first matching rule wins. Each fixed profile also has a bypass list: hosts on that list connect directly even when a rule selects the profile. `<local>` matches single-label names such as `localhost`.
+The first matching rule wins. Each fixed profile also has a bypass list, merged with **Global bypass**: hosts on either list connect directly even when a rule selects the profile. `<local>` matches single-label names such as `localhost`.
 
 The System profile cannot be the default or a rule target. A PAC script has no result that means "use the operating system proxy."
 
@@ -113,6 +120,13 @@ Privacy: [PRIVACY.md](PRIVACY.md).
 
 内置的 Direct（直连）和 System（系统代理）不能编辑或删除。Auto switch（自动切换）不是代理配置，弹窗里不能把它当成代理来编辑。
 
+### 语言切换与全局绕过
+
+在**代理设置**页面中：
+
+- **语言**可在 English（默认）、中文、Русский、Español、Français、日本語 之间实时切换扩展界面（设置页、弹窗、内置配置名称、校验提示和工具栏悬停提示）。语言设置保存在 `chrome.storage.local`，切换后立即生效，无需重新加载扩展。
+- **全局绕过**用于配置对所有自定义代理以及自动切换所选代理都生效的绕过主机与 CIDR 网段（如 `<local>`、`example.com`、`*.internal.example`、`example.com:443`、`10.0.0.0/8`、`2001:db8::/32`）。实际生效的绕过列表会合并单配置绕过与全局绕过并去重（任一列表包含 CIDR 时均通过 PAC 脚本生效）。“直连”本身不使用代理，而 Chrome 的“系统代理”模式不接受扩展绕过列表，因此全局绕过在使用系统代理时不生效。
+
 ### 自动切换
 
 自动切换会生成 PAC 脚本，并通过 `chrome.proxy` 的 `pac_script` 模式交给 Chrome。在设置页添加规则、选择默认配置，然后点击 **Use auto switch**。弹窗会显示当前 http(s) 标签页将使用哪个配置。
@@ -124,7 +138,7 @@ Privacy: [PRIVACY.md](PRIVACY.md).
 | `.example.com` | `www.example.com` 以及更深层的子域 | `example.com` |
 | `example.com:443` | 该主机的 443 端口 | 同一主机的其他端口 |
 
-第一条命中的规则生效。固定代理配置还有绕过列表：列表中的主机即使被规则选中也直接连接。`<local>` 匹配 `localhost` 这类没有点的主机名。
+第一条命中的规则生效。固定代理配置还有绕过列表，并与**全局绕过**合并：任一列表中的主机即使被规则选中也直接连接。`<local>` 匹配 `localhost` 这类没有点的主机名。
 
 系统代理不能作为默认配置或规则目标。PAC 脚本没有“使用操作系统代理”这种返回值。
 

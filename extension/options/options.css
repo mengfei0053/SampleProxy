@@ -35,8 +35,38 @@ body {
   font-size: 14px;
 }
 
+.top-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.lang-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #d5cec2;
+  white-space: nowrap;
+}
+
+.lang-picker select {
+  width: auto;
+  min-width: 112px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 250, 243, 0.25);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .in-use {
-  margin: 0 0 0 auto;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -68,7 +98,9 @@ body {
   padding: 16px;
 }
 
-.auto-card { margin-top: 16px; }
+.global-bypass-card, .auto-card { margin-top: 16px; }
+
+.section-lead { margin-top: 8px; }
 
 .card-head, .rules-head, .actions {
   display: flex;
@@ -177,6 +209,9 @@ input[type="text"], input[type="password"], select, textarea {
 
 textarea { resize: vertical; min-height: 96px; }
 
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] { border-color: var(--danger); }
+
 .password-line { display: flex; gap: 8px; }
 
 .password-line input { flex: 1; }
@@ -282,5 +317,5 @@ button:disabled { opacity: 0.5; cursor: default; }
 @media (max-width: 800px) {
   .layout, .host-row, .rule { grid-template-columns: 1fr; }
   .top { flex-wrap: wrap; }
-  .in-use { margin-left: 0; }
+  .top-controls { margin-left: 0; justify-content: flex-start; }
 }

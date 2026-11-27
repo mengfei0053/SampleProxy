@@ -1,5 +1,11 @@
+import { DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, normalizeLanguage, t } from "./i18n.js";
+
+export { DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, normalizeLanguage };
+
 export const SCHEMA_VERSION = 1;
 export const MAX_USER_PROFILES = 40;
+export const MAX_BYPASS_ENTRIES = 40;
+export const MAX_GLOBAL_BYPASS = 200;
 export const DIRECT_ID = "direct";
 export const SYSTEM_ID = "system";
 export const AUTO_ID = "auto";
@@ -38,12 +44,14 @@ export function newId(prefix) {
 export function createDefaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
+    language: DEFAULT_LANGUAGE,
     profiles: [builtinDirect(), builtinSystem()],
     activeProfileId: DIRECT_ID,
     autoSwitch: {
       defaultProfileId: DIRECT_ID,
       rules: [],
     },
+    globalBypass: [],
   };
 }
 
@@ -98,11 +106,15 @@ export function normalizeState(raw) {
   const ids = new Set(profiles.map((profile) => profile.id));
   const activeProfileId = cleanActiveId(input.activeProfileId, ids);
   const autoSwitch = normalizeAuto(input.autoSwitch, ids);
+  const language = normalizeLanguage(input.language);
+  const globalBypass = normalizeGlobalBypass(input.globalBypass);
   return {
     schemaVersion: SCHEMA_VERSION,
+    language,
     profiles,
     activeProfileId,
     autoSwitch,
+    globalBypass,
   };
 }
 
@@ -111,9 +123,11 @@ export function rawIsCurrent(raw) {
   const normalized = normalizeState(raw);
   const projected = {
     schemaVersion: raw.schemaVersion,
+    language: raw.language,
     profiles: raw.profiles,
     activeProfileId: raw.activeProfileId,
     autoSwitch: raw.autoSwitch,
+    globalBypass: raw.globalBypass,
   };
   return stable(projected) === stable(normalized);
 }
@@ -135,26 +149,39 @@ export function listSelectableProfiles(state) {
   return state.profiles.filter((profile) => profile.builtin !== "system");
 }
 
-export function activeDescriptor(state) {
+export function profileDisplayName(profile, lang = DEFAULT_LANGUAGE) {
+  if (!profile) return "";
+  if (profile.kind === "auto" || profile.id === AUTO_ID) return t(lang, "builtin.autoName");
+  if (profile.builtin === "direct") return t(lang, "builtin.directName");
+  if (profile.builtin === "system") return t(lang, "builtin.systemName");
+  return String(profile.name || "").trim();
+}
+
+export function activeDescriptor(state, lang = state?.language) {
+  const code = normalizeLanguage(lang);
   if (state.activeProfileId === AUTO_ID) {
     return {
       id: AUTO_ID,
-      name: "Auto switch",
+      name: t(code, "builtin.autoName"),
       color: AUTO_COLOR,
       kind: "auto",
       builtin: null,
     };
   }
-  return findProfile(state, state.activeProfileId) || findProfile(state, DIRECT_ID);
+  const profile = findProfile(state, state.activeProfileId) || findProfile(state, DIRECT_ID);
+  if (!profile) return null;
+  if (profile.builtin) return { ...profile, name: profileDisplayName(profile, code) };
+  return profile;
 }
 
-export function describeProfile(profile) {
+export function describeProfile(profile, lang = DEFAULT_LANGUAGE) {
   if (!profile) return "";
-  if (profile.kind === "auto") return "Rules pick a profile per site";
-  if (profile.builtin === "direct") return "No proxy";
-  if (profile.builtin === "system") return "Operating system proxy";
-  const scheme = SCHEME_LABEL[profile.proxy?.scheme] || "Proxy";
-  const host = profile.proxy?.host || "No host";
+  const code = normalizeLanguage(lang);
+  if (profile.kind === "auto") return t(code, "builtin.autoDesc");
+  if (profile.builtin === "direct") return t(code, "builtin.directDesc");
+  if (profile.builtin === "system") return t(code, "builtin.systemDesc");
+  const scheme = SCHEME_LABEL[profile.proxy?.scheme] || t(code, "common.proxy");
+  const host = profile.proxy?.host || t(code, "common.noHost");
   const port = profile.proxy?.port ? `:${profile.proxy.port}` : "";
   return `${scheme} · ${host}${port}`;
 }
@@ -165,10 +192,12 @@ export function badgeLabel(profile) {
   return "ON";
 }
 
-export function actionTitle(profile, error) {
-  const name = String(profile?.name || "").trim() || "SampleProxy";
-  const detail = describeProfile(profile);
-  const lines = [`SampleProxy: ${name}`];
+export function actionTitle(profile, error, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
+  const brand = t(code, "common.brand");
+  const name = profileDisplayName(profile, code) || brand;
+  const detail = describeProfile(profile, code);
+  const lines = [`${brand}: ${name}`];
   if (detail) lines.push(detail);
   if (error) lines.push(String(error));
   return lines.join("\n");
@@ -223,17 +252,18 @@ export function isProxyHost(value) {
   return isIpv4(host) || isIpv6(host) || isDomain(host);
 }
 
-export function hostError(value) {
+export function hostError(value, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
   const original = String(value ?? "").trim();
-  if (!original) return "Enter a host name or IP address.";
+  if (!original) return t(code, "err.hostRequired");
   if (/[^\x00-\x7f]/.test(original)) {
-    return "Use the punycode (ASCII) form of international host names.";
+    return t(code, "err.hostPunycode");
   }
   if (original.includes("://") || original.includes("/") || /\s/.test(original)) {
-    return "Enter the host only, for example 127.0.0.1.";
+    return t(code, "err.hostOnly");
   }
   const host = cleanHost(original);
-  if (!isProxyHost(host)) return "Enter a host name or IP address.";
+  if (!isProxyHost(host)) return t(code, "err.hostRequired");
   return "";
 }
 
@@ -262,25 +292,26 @@ export function splitHostPort(value) {
   return { host: cleanHost(text), port: null };
 }
 
-export function parsePattern(input) {
+export function parsePattern(input, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
   const text = String(input ?? "").trim().toLowerCase();
-  if (!text) return { ok: false, empty: true, error: "Enter a host pattern." };
+  if (!text) return { ok: false, empty: true, error: t(code, "err.patternRequired") };
   const wildcard = text.includes("*") && !text.startsWith("*.");
   if (text.includes("://") || text.includes("/") || /\s/.test(text) || wildcard) {
-    return { ok: false, empty: false, error: "Use example.com, *.example.com, or .example.com." };
+    return { ok: false, empty: false, error: t(code, "err.patternFormat") };
   }
   let pattern = text;
   let port = 0;
   if (text.startsWith("[")) {
     const end = text.indexOf("]");
-    if (end < 0) return { ok: false, empty: false, error: "Invalid IPv6 pattern." };
+    if (end < 0) return { ok: false, empty: false, error: t(code, "err.patternIpv6") };
     pattern = text.slice(1, end);
     const rest = text.slice(end + 1);
     if (rest) {
       const match = /^:(\d{1,5})$/.exec(rest);
-      if (!match) return { ok: false, empty: false, error: "Invalid port in pattern." };
+      if (!match) return { ok: false, empty: false, error: t(code, "err.patternPort") };
       const parsed = cleanPort(match[1]);
-      if (!parsed) return { ok: false, empty: false, error: "Port must be a number from 1 to 65535." };
+      if (!parsed) return { ok: false, empty: false, error: t(code, "err.portRange") };
       port = parsed;
     }
   } else {
@@ -288,12 +319,12 @@ export function parsePattern(input) {
     if (match && !match[1].includes(":")) {
       pattern = match[1];
       const parsed = cleanPort(match[2]);
-      if (!parsed) return { ok: false, empty: false, error: "Port must be a number from 1 to 65535." };
+      if (!parsed) return { ok: false, empty: false, error: t(code, "err.portRange") };
       port = parsed;
     }
   }
   if (!isHostPattern(pattern)) {
-    return { ok: false, empty: false, error: "Use example.com, *.example.com, or .example.com." };
+    return { ok: false, empty: false, error: t(code, "err.patternFormat") };
   }
   return { ok: true, empty: false, pattern, port, error: "" };
 }
@@ -322,31 +353,60 @@ export function portFromPageUrl(url) {
   return 0;
 }
 
-export function profileBypasses(profile, host, port) {
+export function mergeBypassLists(profileBypass = [], globalBypass = []) {
+  const seen = new Set();
+  const merged = [];
+  for (const source of [profileBypass, globalBypass]) {
+    if (!Array.isArray(source)) continue;
+    for (const raw of source) {
+      const line = String(raw ?? "").trim();
+      if (!line) continue;
+      const key = bypassDedupKey(line);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(line);
+    }
+  }
+  return merged;
+}
+
+export function effectiveBypass(profile, globalBypass = []) {
+  if (!profile || profile.builtin) return [];
+  let globalList = [];
+  if (Array.isArray(globalBypass)) {
+    globalList = globalBypass;
+  } else if (Array.isArray(globalBypass?.globalBypass)) {
+    globalList = globalBypass.globalBypass;
+  }
+  return mergeBypassLists(profile.bypass, globalList);
+}
+
+export function profileBypasses(profile, host, port, globalBypass = []) {
   if (!profile || profile.builtin === "direct" || profile.builtin === "system") return false;
-  const lines = Array.isArray(profile.bypass) ? profile.bypass : [];
+  const lines = effectiveBypass(profile, globalBypass);
   const normalized = normalizeHost(host);
   const portNum = Number(port) || 0;
   return lines.some((line) => bypassLineMatches(line, normalized, portNum));
 }
 
-export function parseCidr(input) {
+export function parseCidr(input, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
   const text = String(input ?? "").trim().toLowerCase();
   const slash = text.indexOf("/");
   if (slash <= 0 || slash !== text.lastIndexOf("/")) return { ok: false, cidr: false, error: "" };
   const address = text.slice(0, slash);
   const prefixText = text.slice(slash + 1);
   if (!/^\d{1,3}$/.test(prefixText)) {
-    return { ok: false, cidr: true, error: "CIDR prefix must be a number." };
+    return { ok: false, cidr: true, error: t(code, "err.cidrPrefixNumber") };
   }
   const prefix = Number(prefixText);
   if (isIpv4(address)) {
-    if (prefix > 32) return { ok: false, cidr: true, error: "IPv4 prefix must be from 0 to 32." };
+    if (prefix > 32) return { ok: false, cidr: true, error: t(code, "err.cidrIpv4Range") };
     return { ok: true, cidr: true, family: "ipv4", address, prefix, error: "" };
   }
   const v6 = address.startsWith("[") && address.endsWith("]") ? address.slice(1, -1) : address;
   if (isIpv6(v6)) {
-    if (prefix > 128) return { ok: false, cidr: true, error: "IPv6 prefix must be from 0 to 128." };
+    if (prefix > 128) return { ok: false, cidr: true, error: t(code, "err.cidrIpv6Range") };
     return { ok: true, cidr: true, family: "ipv6", address: v6, prefix, error: "" };
   }
   return { ok: false, cidr: false, error: "" };
@@ -364,21 +424,25 @@ export function ipInCidr(host, cidr) {
   return ipv6InCidr(ip, parsed.address, parsed.prefix);
 }
 
-export function bypassHasCidr(profile) {
-  return (profile?.bypass || []).some((line) => parseCidr(line).ok);
+export function bypassHasCidr(profile, globalBypass = []) {
+  const lines = Array.isArray(profile)
+    ? mergeBypassLists(profile, globalBypass)
+    : effectiveBypass(profile, globalBypass);
+  return lines.some((line) => parseCidr(line).ok);
 }
 
 export function resolveTarget(state, host, port) {
   const normalized = normalizeHost(host);
   const portNum = Number(port) || 0;
+  const globalBypass = state.globalBypass || [];
   if (state.activeProfileId !== AUTO_ID) {
     const profile = findProfile(state, state.activeProfileId) || findProfile(state, DIRECT_ID);
-    if (profileBypasses(profile, normalized, portNum)) {
+    if (profileBypasses(profile, normalized, portNum, globalBypass)) {
       return { profile: findProfile(state, DIRECT_ID), bypassed: true };
     }
     return { profile, bypassed: false };
   }
-  const problem = validateAutoSwitch(state);
+  const problem = validateAutoSwitch(state, state.language);
   if (problem) return { profile: null, bypassed: false, error: problem };
   let chosen = findProfile(state, state.autoSwitch.defaultProfileId) || findProfile(state, DIRECT_ID);
   for (const rule of state.autoSwitch.rules) {
@@ -389,47 +453,49 @@ export function resolveTarget(state, host, port) {
       break;
     }
   }
-  if (profileBypasses(chosen, normalized, portNum)) {
+  if (profileBypasses(chosen, normalized, portNum, globalBypass)) {
     return { profile: findProfile(state, DIRECT_ID), bypassed: true };
   }
   return { profile: chosen, bypassed: false };
 }
 
-export function proxyFieldErrors(proxy) {
+export function proxyFieldErrors(proxy, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
   return {
-    scheme: SCHEMES.includes(proxy?.scheme) ? "" : "Choose HTTP, HTTPS, SOCKS4, or SOCKS5.",
-    host: hostError(proxy?.host),
-    port: cleanPort(proxy?.port) == null ? "Port must be a number from 1 to 65535." : "",
+    scheme: SCHEMES.includes(proxy?.scheme) ? "" : t(code, "err.scheme"),
+    host: hostError(proxy?.host, code),
+    port: cleanPort(proxy?.port) == null ? t(code, "err.portRange") : "",
   };
 }
 
-export function upsertFixedProfile(state, profile) {
+export function upsertFixedProfile(state, profile, lang = state?.language) {
   const next = normalizeState(state);
+  const code = normalizeLanguage(lang);
   const reject = (error) => ({ ok: false, error, state: next });
   if (!profile || typeof profile !== "object" || profile.builtin) {
-    return reject("Built-in profiles cannot be edited.");
+    return reject(t(code, "err.builtinReadOnly"));
   }
   if (profile.id === DIRECT_ID || profile.id === SYSTEM_ID || profile.id === AUTO_ID) {
-    return reject("Built-in profiles cannot be edited.");
+    return reject(t(code, "err.builtinReadOnly"));
   }
   const name = String(profile.name ?? "").replace(/[\u0000-\u001f\u007f]/g, "").trim();
-  if (!name) return reject("Give the profile a name.");
-  const fields = proxyFieldErrors(profile.proxy);
+  if (!name) return reject(t(code, "err.nameRequired"));
+  const fields = proxyFieldErrors(profile.proxy, code);
   const fieldError = fields.scheme || fields.host || fields.port;
   if (fieldError) return reject(fieldError);
   if (Array.isArray(profile.bypass)) {
-    const bypassProblem = bypassListError(profile.bypass);
+    const bypassProblem = bypassListError(profile.bypass, code);
     if (bypassProblem) return reject(bypassProblem);
   }
   const index = next.profiles.findIndex((item) => item.id === profile.id);
   if (index === -1) {
     const count = next.profiles.filter((item) => !item.builtin).length;
     if (count >= MAX_USER_PROFILES) {
-      return reject("You can save 40 proxy profiles. Delete one in Proxy settings before adding another.");
+      return reject(t(code, "err.maxProfiles", { max: MAX_USER_PROFILES }));
     }
     next.profiles.push({ ...profile, name, builtin: null });
   } else if (next.profiles[index].builtin) {
-    return reject("Built-in profiles cannot be edited.");
+    return reject(t(code, "err.builtinReadOnly"));
   } else {
     const current = next.profiles[index];
     const replacement = {
@@ -449,56 +515,62 @@ export function upsertFixedProfile(state, profile) {
   return { ok: true, error: "", state: normalizeState(next) };
 }
 
-export function splitBypassText(value) {
+export function splitBypassText(value, limit = MAX_BYPASS_ENTRIES) {
   return String(value ?? "")
     .split(/[\n,]/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, 40);
+    .slice(0, limit);
 }
 
-export function bypassListError(lines) {
+export function bypassListError(lines, options = {}) {
+  const code = normalizeLanguage(typeof options === "string" ? options : options?.lang);
+  const key = typeof options === "object" && options?.global
+    ? "err.globalBypassInvalid"
+    : "err.bypassInvalid";
   for (const line of lines || []) {
-    const cidr = parseCidr(line);
+    const cidr = parseCidr(line, code);
     if (cidr.cidr) {
-      if (!cidr.ok) return `Bypass entry "${clip(line)}" is not valid. ${cidr.error}`;
+      if (!cidr.ok) return t(code, key, { entry: clip(line), detail: cidr.error });
       continue;
     }
-    const parsed = parsePattern(line);
+    const parsed = parsePattern(line, code);
     if (!parsed.ok) {
       const detail = String(line).includes("/")
-        ? "Use a host pattern or CIDR such as *.example.com, 10.0.0.0/8, or 2001:db8::/32."
+        ? t(code, "err.bypassCidrHint")
         : parsed.error;
-      return `Bypass entry "${clip(line)}" is not valid. ${detail}`;
+      return t(code, key, { entry: clip(line), detail });
     }
   }
   return "";
 }
 
-export function validateFixedProfile(profile) {
-  if (!profile || profile.builtin) return "Choose a fixed proxy profile.";
-  if (!SCHEMES.includes(profile.proxy?.scheme)) return "Choose HTTP, HTTPS, SOCKS4, or SOCKS5.";
-  const problem = hostError(profile.proxy?.host);
+export function validateFixedProfile(profile, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
+  if (!profile || profile.builtin) return t(code, "err.chooseFixed");
+  if (!SCHEMES.includes(profile.proxy?.scheme)) return t(code, "err.scheme");
+  const problem = hostError(profile.proxy?.host, code);
   if (problem) return problem;
-  if (cleanPort(profile.proxy?.port) == null) return "Port must be a number from 1 to 65535.";
-  return bypassListError(profile.bypass);
+  if (cleanPort(profile.proxy?.port) == null) return t(code, "err.portRange");
+  return bypassListError(profile.bypass, code);
 }
 
-export function validateAutoSwitch(state) {
+export function validateAutoSwitch(state, lang = state?.language) {
+  const code = normalizeLanguage(lang);
   const fallback = findProfile(state, state.autoSwitch?.defaultProfileId);
-  const fallbackError = validateTargetProfile(fallback, "The default profile");
+  const fallbackError = validateTargetProfile(fallback, t(code, "err.defaultProfileLabel"), code);
   if (fallbackError) return fallbackError;
   for (const rule of state.autoSwitch?.rules || []) {
     if (!String(rule.pattern || "").trim()) continue;
-    const parsed = parsePattern(rule.pattern);
+    const parsed = parsePattern(rule.pattern, code);
     if (!parsed.ok) {
-      return `Rule "${clip(rule.pattern)}" is not a host pattern. Use example.com or *.example.com.`;
+      return t(code, "err.ruleInvalidPattern", { pattern: clip(rule.pattern) });
     }
     const profile = findProfile(state, rule.profileId);
-    const ruleError = validateTargetProfile(profile, `Rule "${clip(rule.pattern)}"`);
+    const ruleError = validateTargetProfile(profile, t(code, "err.ruleLabel", { pattern: clip(rule.pattern) }), code);
     if (ruleError) return ruleError;
   }
-  return "";
+  return bypassListError(state.globalBypass, { lang: code, global: true });
 }
 
 export function credentialsForChallenge(state, details) {
@@ -537,14 +609,15 @@ function profileForChallenge(state, details) {
   return resolveTarget(state, host, port).profile;
 }
 
-function validateTargetProfile(profile, label) {
-  if (!profile) return `${label} is missing. Choose Direct or a fixed server.`;
+function validateTargetProfile(profile, label, lang = DEFAULT_LANGUAGE) {
+  const code = normalizeLanguage(lang);
+  if (!profile) return t(code, "err.targetMissing", { label });
   if (profile.builtin === "system" || profile.kind === "auto") {
-    return `${label} cannot be the System profile. Choose Direct or a fixed server.`;
+    return t(code, "err.targetSystem", { label });
   }
   if (profile.builtin === "direct") return "";
-  const problem = validateFixedProfile(profile);
-  return problem ? `${label}: ${problem}` : "";
+  const problem = validateFixedProfile(profile, code);
+  return problem ? t(code, "err.targetDetail", { label, problem }) : "";
 }
 
 function builtinDirect() {
@@ -575,8 +648,27 @@ function normalizeUserProfile(entry, seen) {
       username: cleanSecret(entry.proxy?.username),
       password: cleanSecret(entry.proxy?.password),
     },
-    bypass: bypassSource.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, 40),
+    bypass: bypassSource.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, MAX_BYPASS_ENTRIES),
   };
+}
+
+function normalizeGlobalBypass(source) {
+  if (!Array.isArray(source)) return [];
+  return source.map((line) => String(line ?? "").trim()).filter(Boolean).slice(0, MAX_GLOBAL_BYPASS);
+}
+
+function bypassDedupKey(line) {
+  const cidr = parseCidr(line);
+  if (cidr.ok) {
+    const addr = cidr.family === "ipv6" ? (ipv6Groups(cidr.address)?.join(":") || cidr.address) : cidr.address;
+    return `cidr:${cidr.family}:${addr}/${cidr.prefix}`;
+  }
+  const parsed = parsePattern(line);
+  if (parsed.ok) {
+    const pat = isIpv6(parsed.pattern) ? (ipv6Groups(parsed.pattern)?.join(":") || parsed.pattern) : parsed.pattern;
+    return `pat:${pat}:${parsed.port || 0}`;
+  }
+  return `raw:${String(line ?? "").trim().toLowerCase()}`;
 }
 
 function normalizeAuto(autoSwitch, ids) {

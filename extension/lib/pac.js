@@ -1,6 +1,8 @@
+import { DEFAULT_LANGUAGE, t } from "./i18n.js";
 import {
   cleanHost,
   cleanPort,
+  effectiveBypass,
   findProfile,
   isIpv6,
   parseCidr,
@@ -113,22 +115,23 @@ function endsWithText(text, suffix) {
 }
 `;
 
-export function pacResult(profile) {
+export function pacResult(profile, lang = DEFAULT_LANGUAGE) {
   if (!profile || profile.builtin === "direct") return "DIRECT";
   if (profile.builtin === "system" || profile.kind === "auto") {
-    throw new Error("This profile cannot be expressed in a PAC script.");
+    throw new Error(t(lang, "err.pacUnsupported"));
   }
   const host = cleanHost(profile.proxy.host);
   const port = cleanPort(profile.proxy.port);
   const token = { http: "PROXY", https: "HTTPS", socks4: "SOCKS4", socks5: "SOCKS5" }[profile.proxy.scheme];
-  if (!token || !host || !port) throw new Error("This profile cannot be expressed in a PAC script.");
+  if (!token || !host || !port) throw new Error(t(lang, "err.pacUnsupported"));
   const rendered = isIpv6(host) ? `[${host}]` : host;
   return `${token} ${rendered}:${port}`;
 }
 
 export function buildPac(state) {
-  const problem = validateAutoSwitch(state);
+  const problem = validateAutoSwitch(state, state.language);
   if (problem) throw new Error(problem);
+  const globalBypass = state.globalBypass || [];
   const rules = [];
   for (const rule of state.autoSwitch.rules) {
     if (!String(rule.pattern || "").trim()) continue;
@@ -137,36 +140,36 @@ export function buildPac(state) {
     rules.push({
       pattern: parsed.pattern,
       port: parsed.port || 0,
-      result: pacResult(profile),
-      bypass: bypassData(profile),
+      result: pacResult(profile, state.language),
+      bypass: bypassData(profile, globalBypass),
     });
   }
   const fallback = findProfile(state, state.autoSwitch.defaultProfileId);
   const data = {
     rules,
     fallback: {
-      result: pacResult(fallback),
-      bypass: bypassData(fallback),
+      result: pacResult(fallback, state.language),
+      bypass: bypassData(fallback, globalBypass),
     },
   };
   return `var PROXY_DATA = ${JSON.stringify(data)};\n${PAC_RUNTIME}`;
 }
 
-export function buildFixedPac(profile) {
+export function buildFixedPac(profile, globalBypass = [], lang = DEFAULT_LANGUAGE) {
   const data = {
     rules: [],
     fallback: {
-      result: pacResult(profile),
-      bypass: bypassData(profile),
+      result: pacResult(profile, lang),
+      bypass: bypassData(profile, globalBypass),
     },
   };
   return `var PROXY_DATA = ${JSON.stringify(data)};\n${PAC_RUNTIME}`;
 }
 
-function bypassData(profile) {
+function bypassData(profile, globalBypass = []) {
   if (!profile || profile.builtin) return [];
   const entries = [];
-  for (const line of profile.bypass || []) {
+  for (const line of effectiveBypass(profile, globalBypass)) {
     const cidr = parseCidr(line);
     if (cidr.ok) {
       entries.push({ cidr: `${cidr.address}/${cidr.prefix}` });
