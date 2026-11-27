@@ -14,19 +14,32 @@
       <img src="../icons/icon48.png" width="40" height="40" alt="">
       <div class="top-copy">
         <h1>SampleProxy</h1>
-        <p>Choose a connection for Chrome, or let rules pick one per site.</p>
+        <p data-i18n="options.subtitle">Choose a connection for Chrome, or let rules pick one per site.</p>
       </div>
-      <p class="in-use">In use <span id="in-use-swatch" class="swatch"></span> <strong id="in-use-name">Direct</strong></p>
+      <div class="top-controls">
+        <label class="lang-picker">
+          <span data-i18n="options.language">Language</span>
+          <select id="language">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="ru">Русский</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="ja">日本語</option>
+          </select>
+        </label>
+        <p class="in-use"><span data-i18n="options.inUseLabel">In use</span> <span id="in-use-swatch" class="swatch"></span> <strong id="in-use-name">Direct</strong></p>
+      </div>
     </header>
 
     <p id="apply-error" class="banner" hidden></p>
     <p id="save-state" class="save-state" role="status"></p>
 
     <div class="layout">
-      <section class="card" aria-label="Profiles">
+      <section class="card" aria-label="Profiles" data-i18n-aria="options.profilesAria">
         <div class="card-head">
-          <h2>Profiles</h2>
-          <button id="add-profile" class="primary" type="button">New proxy</button>
+          <h2 data-i18n="options.profilesHeading">Profiles</h2>
+          <button id="add-profile" class="primary" type="button" data-i18n="options.newProxy">New proxy</button>
         </div>
         <div id="profile-list" class="profile-list"></div>
       </section>
@@ -37,18 +50,18 @@
         <form id="editor" autocomplete="off">
           <div id="fixed-fields">
           <label class="field">
-            <span>Name</span>
+            <span data-i18n="field.name">Name</span>
             <input id="name" type="text" maxlength="60" spellcheck="false">
             <small id="name-error" class="field-error"></small>
           </label>
 
           <fieldset class="field">
-            <legend>Badge color</legend>
+            <legend data-i18n="field.badgeColor">Badge color</legend>
             <div id="colors" class="colors"></div>
           </fieldset>
 
           <label class="field">
-            <span>Type</span>
+            <span data-i18n="field.type">Type</span>
             <select id="scheme">
               <option value="http">HTTP</option>
               <option value="https">HTTPS</option>
@@ -59,12 +72,12 @@
 
           <div class="host-row">
             <label class="field">
-              <span>Host</span>
+              <span data-i18n="field.host">Host</span>
               <input id="host" type="text" spellcheck="false" autocapitalize="off" placeholder="127.0.0.1">
               <small id="host-error" class="field-error"></small>
             </label>
             <label class="field">
-              <span>Port</span>
+              <span data-i18n="field.port">Port</span>
               <input id="port" type="text" inputmode="numeric" spellcheck="false" placeholder="1080">
               <small id="port-error" class="field-error"></small>
             </label>
@@ -72,11 +85,11 @@
 
           <div class="host-row">
             <label class="field">
-              <span>Username</span>
+              <span data-i18n="field.username">Username</span>
               <input id="username" type="text" autocomplete="off" spellcheck="false">
             </label>
             <label class="field">
-              <span>Password</span>
+              <span data-i18n="field.password">Password</span>
               <span class="password-line">
                 <input id="password" type="password" autocomplete="new-password">
                 <button id="toggle-password" type="button">Show</button>
@@ -86,44 +99,57 @@
           <p id="auth-note" class="hint"></p>
 
           <label class="field">
-            <span>Bypass</span>
+            <span data-i18n="field.bypass">Bypass</span>
             <textarea id="bypass" rows="5" spellcheck="false" placeholder="<local>&#10;localhost&#10;127.0.0.1&#10;[::1]"></textarea>
             <small id="bypass-error" class="field-error"></small>
-            <small class="hint">One host per line. These hosts skip this proxy, including when a rule selects it. <code>&lt;local&gt;</code> matches single-label names such as localhost. CIDR ranges such as <code>10.0.0.0/8</code> and <code>2001:db8::/32</code> are matched in the generated PAC script.</small>
+            <small class="hint" data-i18n-rich="options.bypassHint">One host per line. Effective bypass combines this profile's Bypass with Global bypass, including when a rule selects this profile. <code>&lt;local&gt;</code> matches single-label names such as localhost. CIDR ranges such as <code>10.0.0.0/8</code> and <code>2001:db8::/32</code> are matched in the generated PAC script.</small>
           </label>
           </div>
 
           <div class="actions">
             <button id="use-profile" class="primary" type="button">Use this profile</button>
             <button id="delete-profile" class="danger" type="button">Delete</button>
-            <button id="cancel-delete" class="quiet" type="button" hidden>Cancel</button>
+            <button id="cancel-delete" class="quiet" type="button" hidden data-i18n="common.cancel">Cancel</button>
           </div>
         </form>
       </section>
     </div>
 
+    <section id="global-bypass-card" class="card global-bypass-card">
+      <div class="card-head">
+        <h2 data-i18n="options.globalBypassHeading">Global bypass</h2>
+      </div>
+      <p class="hint section-lead" data-i18n="options.globalBypassLead">Applies to all custom proxy profiles and to Auto switch whenever a rule or the default selects a proxy. Effective bypass merges each profile's Bypass with this list (duplicates removed). Direct is already direct, and Chrome's System mode does not accept an extension bypass list, so Global bypass does not apply while System is active.</p>
+      <label class="field">
+        <span data-i18n="options.globalBypassLabel">Hosts and CIDR ranges that skip all proxies</span>
+        <textarea id="global-bypass" rows="4" spellcheck="false" placeholder="*.internal.example&#10;10.0.0.0/8&#10;2001:db8::/32"></textarea>
+        <small id="global-bypass-error" class="field-error"></small>
+        <small class="hint" data-i18n-rich="options.globalBypassHint">One pattern or CIDR per line, or separate them with commas. Supports <code>&lt;local&gt;</code>, hosts (<code>example.com</code>), wildcards (<code>*.internal.example</code>, <code>.internal.example</code>), ports (<code>example.com:443</code>), and CIDR (<code>10.0.0.0/8</code>, <code>2001:db8::/32</code>).</small>
+      </label>
+    </section>
+
     <section id="auto-switch" class="card auto-card">
       <div class="card-head">
-        <h2>Auto switch</h2>
+        <h2 data-i18n="options.autoHeading">Auto switch</h2>
         <button id="use-auto" class="primary" type="button">Use auto switch</button>
       </div>
-      <p class="hint">When Auto switch is on, Chrome uses a PAC script. The first matching rule wins. A profile's bypass list still connects directly. The System profile cannot be chosen per site, because a PAC script has no "use the operating system proxy" result.</p>
+      <p class="hint section-lead" data-i18n="options.autoHint">When Auto switch is on, Chrome uses a PAC script. The first matching rule wins. Both the chosen profile's Bypass list and Global bypass still connect directly. The System profile cannot be chosen per site, because a PAC script has no "use the operating system proxy" result.</p>
 
       <label class="field narrow">
-        <span>Default for sites with no matching rule</span>
+        <span data-i18n="options.defaultProfileLabel">Default for sites with no matching rule</span>
         <select id="default-profile"></select>
       </label>
 
       <div class="rules-head">
-        <h3>Rules</h3>
-        <button id="add-rule" type="button" class="quiet">Add rule</button>
+        <h3 data-i18n="options.rulesHeading">Rules</h3>
+        <button id="add-rule" type="button" class="quiet" data-i18n="options.addRule">Add rule</button>
       </div>
       <div id="rules"></div>
-      <p class="hint">Patterns: <code>example.com</code> (that host only), <code>*.example.com</code> (that host and subdomains), <code>.example.com</code> (subdomains only). Add <code>:443</code> to match one port.</p>
+      <p class="hint" data-i18n-rich="options.patternsHint">Patterns: <code>example.com</code> (that host only), <code>*.example.com</code> (that host and subdomains), <code>.example.com</code> (subdomains only). Add <code>:443</code> to match one port.</p>
     </section>
 
     <footer class="page-foot">
-      <p>Not affiliated with SwitchyOmega. Proxy usernames and passwords stay in this browser profile and are sent only to an HTTP or HTTPS proxy that asks Chrome to sign in.</p>
+      <p data-i18n="options.footer">Not affiliated with SwitchyOmega. Proxy usernames and passwords stay in this browser profile and are sent only to an HTTP or HTTPS proxy that asks Chrome to sign in.</p>
     </footer>
   </main>
   <script type="module" src="options.js"></script>

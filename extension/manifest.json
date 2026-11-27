@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SampleProxy",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Switch Chrome between a direct connection, the system proxy, or a fixed proxy server.",
   "minimum_chrome_version": "111",
   "homepage_url": "https://github.com/mengfei0053/SampleProxy",

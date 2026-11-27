@@ -12,7 +12,7 @@
   --danger: #8d2f2f;
   --banner: #f8e6df;
   --focus: #9f3d22;
-  font-family: "Segoe UI", "Helvetica Neue", "Noto Sans", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Segoe UI", "Helvetica Neue", "Noto Sans", "Noto Sans CJK SC", "Noto Sans CJK JP", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", "Yu Gothic UI", sans-serif;
 }
 
 * { box-sizing: border-box; }
